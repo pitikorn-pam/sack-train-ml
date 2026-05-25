@@ -1,0 +1,168 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #07111f;
+  color: #ecf3ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(30, 144, 255, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(147, 51, 234, 0.16), transparent 30%),
+    linear-gradient(180deg, #07111f 0%, #0b1728 100%);
+}
+
+code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+}
+
+.app-shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.hero {
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+h1 {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1.05;
+}
+
+.subtext {
+  max-width: 720px;
+  color: #b9c8df;
+  line-height: 1.6;
+}
+
+.status-card,
+.panel,
+.artifact-card,
+.stage-card {
+  background: rgba(12, 23, 40, 0.72);
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  box-shadow: 0 12px 50px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+  border-radius: 20px;
+}
+
+.status-card {
+  min-width: 280px;
+  padding: 20px;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #7dd3fc;
+  font-weight: 700;
+}
+
+.status-card ul,
+.planned-pages {
+  margin: 0;
+  padding-left: 18px;
+  color: #d2ddf0;
+  line-height: 1.8;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.stage-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stage-card {
+  display: flex;
+  gap: 14px;
+  padding: 16px;
+}
+
+.stage-card h3,
+.artifact-card h3 {
+  margin: 0 0 6px;
+}
+
+.stage-card p,
+.artifact-card p {
+  margin: 0;
+  color: #b9c8df;
+  line-height: 1.55;
+}
+
+.stage-index {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #38bdf8, #8b5cf6);
+  color: white;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.artifact-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.artifact-card {
+  padding: 18px;
+}
+
+@media (max-width: 920px) {
+  .hero,
+  .grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .artifact-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,9 @@
+version: 0.1.0
+model_name: yolov11s-sack
+include_artifacts:
+  - pytorch
+  - onnx
+  - hef
+  - hef_meta
+  - eval_fp32
+  - eval_int8

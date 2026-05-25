@@ -1,0 +1,6 @@
+path: ./data/datasets/sack-v1
+train: images/train
+val: images/val
+names:
+  0: sack
+  1: person

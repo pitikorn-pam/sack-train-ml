@@ -1,0 +1,6 @@
+model_name: yolov11s-sack
+onnx_path: ./artifacts/model.onnx
+calibration_manifest: ./artifacts/calibration/manifest.csv
+hef_output_path: ./artifacts/model.hef
+target: hailo8l
+input_shape: [640, 640, 3]
