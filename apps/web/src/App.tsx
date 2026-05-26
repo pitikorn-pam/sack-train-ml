@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SignIn, SignOutButton, useSession } from "./components/Auth";
+import { ToastProvider } from "./components/Toast";
+import { NotificationCenter } from "./components/NotificationCenter";
 import { Overview } from "./sections/Overview";
 import { Train } from "./sections/Train";
 import { Models } from "./sections/Models";
@@ -15,8 +17,22 @@ const SECTIONS: { key: Section; label: string }[] = [
 ];
 
 export default function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+function AppInner() {
   const session = useSession();
   const [section, setSection] = useState<Section>("overview");
+
+  const isAdmin = useMemo(() => {
+    if (session === "loading" || session === null) return false;
+    const meta = (session.user.app_metadata ?? {}) as Record<string, unknown>;
+    return meta.role === "admin";
+  }, [session]);
 
   if (session === "loading") return <div className="app-shell"><p>Loading…</p></div>;
 
@@ -31,6 +47,8 @@ export default function App() {
       </div>
     );
   }
+
+  const email = session.user.email ?? "(unknown)";
 
   return (
     <div className="app-shell">
@@ -53,17 +71,30 @@ export default function App() {
             ))}
           </nav>
           <div className="topbar-account">
-            <span className="topbar-user">{session.user.email}</span>
-            <SignOutButton />
+            <NotificationCenter
+              email={email}
+              onJump={(target) => {
+                if (target === "overview" || target === "train" || target === "models" || target === "storage") {
+                  setSection(target);
+                }
+              }}
+            />
+            <div className="topbar-account-card">
+              <code className="topbar-user">{email}</code>
+              <span className={`role-badge ${isAdmin ? "admin" : "read"}`}>
+                {isAdmin ? "★ admin" : "authenticated"}
+              </span>
+              <SignOutButton />
+            </div>
           </div>
         </div>
       </header>
 
       <main className="section-main">
-        {section === "overview" && <Overview onJumpToTrain={() => setSection("train")} />}
+        {section === "overview" && <Overview onJump={setSection} />}
         {section === "train" && <Train />}
-        {section === "models" && <Models />}
-        {section === "storage" && <Storage />}
+        {section === "models" && <Models isAdmin={isAdmin} />}
+        {section === "storage" && <Storage isAdmin={isAdmin} />}
       </main>
     </div>
   );

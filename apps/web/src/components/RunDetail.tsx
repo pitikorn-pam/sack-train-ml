@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase, type Run, type RunMetric } from "../lib/supabase";
+import { MetricChart } from "./MetricChart";
+import { ColabSteps } from "./ColabSteps";
+
+const COLAB_URL = (runId: string) =>
+  `https://colab.research.google.com/github/pitikorn-pam/sack-train-ml/blob/main/notebooks/train_run.ipynb?run_id=${runId}`;
 
 export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   const [run, setRun] = useState<Run | null>(null);
@@ -17,7 +22,7 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
         .select("*")
         .eq("run_id", runId)
         .order("step", { ascending: true })
-        .limit(2000);
+        .limit(5000);
       if (!cancelled) setMetrics((data ?? []) as RunMetric[]);
     }
     loadRun();
@@ -25,16 +30,10 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
 
     const ch = supabase
       .channel(`run-${runId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "runs", filter: `id=eq.${runId}` },
-        () => loadRun(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "run_metrics", filter: `run_id=eq.${runId}` },
-        (payload) => setMetrics((prev) => [...prev, payload.new as RunMetric]),
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "runs", filter: `id=eq.${runId}` }, () => loadRun())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "run_metrics", filter: `run_id=eq.${runId}` }, (p) => {
+        setMetrics((prev) => [...prev, p.new as RunMetric]);
+      })
       .subscribe();
 
     return () => {
@@ -43,41 +42,114 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
     };
   }, [runId]);
 
-  const byName = metrics.reduce<Record<string, RunMetric[]>>((acc, m) => {
-    (acc[m.name] ??= []).push(m);
-    return acc;
-  }, {});
+  const cfg = (run?.config_yaml as Record<string, any> | undefined) ?? {};
+  const logs = (cfg.logs ?? []) as Array<Record<string, any>>;
+  const stats = (cfg.dataset_stats ?? {}) as Record<string, any>;
 
-  const logs = (run?.config_yaml as Record<string, unknown> | undefined)?.logs as
-    | Array<Record<string, unknown>>
-    | undefined;
+  const displayStatus = useMemo(() => {
+    if (!run) return "loading";
+    if (run.status === "running" && metrics.length === 0) return "waiting";
+    return run.status;
+  }, [run, metrics.length]);
+
+  const progress = useMemo(() => {
+    const p = metrics.filter((m) => m.name === "progress");
+    if (p.length === 0) return null;
+    return p[p.length - 1].value;
+  }, [metrics]);
+
+  const showColab = displayStatus === "waiting" || displayStatus === "pending";
 
   return (
-    <div className="panel">
-      <button onClick={onBack}>← Back</button>
-      <h2>Run {runId.slice(0, 8)}</h2>
-      <p>Status: <strong>{run?.status ?? "…"}</strong></p>
-      <p>Git: <code>{run?.git_sha ?? "—"}</code></p>
+    <div className="run-detail">
+      <button onClick={onBack} className="link-button">← Back</button>
 
-      <h3>Metrics</h3>
-      {Object.keys(byName).length === 0 && <p className="muted">No metrics yet.</p>}
-      {Object.entries(byName).map(([name, rows]) => {
-        const last = rows[rows.length - 1];
-        return (
-          <div key={name} className="metric-row">
-            <span className="metric-name">{name}</span>
-            <span className="metric-value">{last.value.toFixed(4)}</span>
-            <span className="muted">step {last.step}</span>
-          </div>
-        );
-      })}
+      <section className="panel run-header">
+        <div>
+          <h2>Run · <code>{runId.slice(0, 8)}</code></h2>
+          <p className="muted">
+            Status: <span className={`pill pill-${displayStatus}`}>{displayStatus}</span>
+            {run?.git_sha && <> · git <code>{run.git_sha}</code></>}
+            {run?.started_at && <> · started {new Date(run.started_at).toLocaleString()}</>}
+          </p>
+          {progress !== null && (
+            <div className="run-progress">
+              <div className="progress-bar"><div className="progress-fill" style={{ width: `${Math.min(100, progress)}%` }} /></div>
+              <span>{progress.toFixed(0)}%</span>
+            </div>
+          )}
+        </div>
+      </section>
 
-      <h3>Logs</h3>
-      <pre className="logs">
-        {(logs ?? []).map((l, i) =>
-          `${l.ts ?? ""} [${l.phase ?? ""}/${l.status ?? ""}] ${l.message ?? ""}\n${i % 1 === 0 ? "" : ""}`
-        ).join("")}
-      </pre>
+      {showColab && (
+        <section className="panel">
+          <h3>Waiting for Colab</h3>
+          <ColabSteps runId={runId} colabUrl={COLAB_URL(runId)} />
+        </section>
+      )}
+
+      <section className="panel">
+        <h3>Training metrics</h3>
+        <MetricChart metrics={metrics} />
+      </section>
+
+      <section className="panel">
+        <h3>Config</h3>
+        <dl className="config-grid">
+          <dt>Source weights</dt>
+          <dd><code>{cfg.source_weights ?? "—"}</code></dd>
+          <dt>Dataset</dt>
+          <dd><code>{cfg.dataset ?? "—"}</code></dd>
+          <dt>Classes</dt>
+          <dd>
+            {(cfg.classes as string[] | undefined)?.map((c, i) => (
+              <span key={c + i} className="chip">{i}: {c}</span>
+            )) ?? "—"}
+          </dd>
+          <dt>Input size</dt>
+          <dd><code>{JSON.stringify(cfg.input_size)}</code></dd>
+          <dt>Task</dt>
+          <dd>{cfg.task ?? "—"} · {cfg.output_kind ?? ""}</dd>
+          <dt>Hailo target</dt>
+          <dd>{cfg.export_options?.hailo_target ?? "—"}</dd>
+          <dt>Hyperparameters</dt>
+          <dd>
+            <code>
+              epochs={cfg.hyperparameters?.epochs} · imgsz={cfg.hyperparameters?.imgsz} ·
+              batch={cfg.hyperparameters?.batch} · patience={cfg.hyperparameters?.patience} ·
+              lr0={cfg.hyperparameters?.lr0}
+            </code>
+          </dd>
+          {cfg.note && (<><dt>Note</dt><dd>{cfg.note}</dd></>)}
+        </dl>
+      </section>
+
+      {Object.keys(stats).length > 0 && (
+        <section className="panel">
+          <h3>Dataset split</h3>
+          <dl className="config-grid">
+            {Object.entries(stats).map(([k, v]) => (
+              <div key={k} style={{ display: "contents" }}>
+                <dt>{k}</dt>
+                <dd>{String(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+
+      <section className="panel">
+        <h3>Logs ({logs.length})</h3>
+        {logs.length === 0 ? (
+          <p className="muted">No logs yet.</p>
+        ) : (
+          <pre className="logs">
+            {logs.map((l) =>
+              `${(l.ts || "").slice(11, 19)} [${l.phase ?? "?"}/${l.status ?? "?"}] ${l.message ?? ""}`
+            ).join("\n")}
+          </pre>
+        )}
+      </section>
     </div>
   );
 }
