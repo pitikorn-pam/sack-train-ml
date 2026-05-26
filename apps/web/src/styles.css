@@ -166,3 +166,91 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================================
+ * Added for Phase 1 dashboard
+ * ============================================================================ */
+
+.runs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.runs-table th, .runs-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+}
+.runs-table tr.clickable { cursor: pointer; }
+.runs-table tr.clickable:hover { background: rgba(255,255,255,0.04); }
+
+.status-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.nav-tabs {
+  display: flex; gap: 8px;
+  padding: 12px 24px;
+}
+.nav-tabs button {
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.08);
+  color: inherit;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nav-tabs button:disabled {
+  background: #2563eb;
+  cursor: default;
+}
+
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.stack label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.stack input, .stack textarea {
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.stack button {
+  padding: 8px 16px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.stack button:disabled { opacity: 0.5; }
+
+.error { color: #ef4444; font-size: 14px; }
+.muted { color: #6b7280; font-style: italic; }
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 200px 100px 1fr;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.metric-name { font-family: ui-monospace, monospace; }
+.metric-value { font-weight: 700; text-align: right; }
+
+.logs {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  background: rgba(0,0,0,0.4);
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
