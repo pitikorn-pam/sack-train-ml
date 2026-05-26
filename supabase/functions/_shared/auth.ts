@@ -33,3 +33,20 @@ export function isAdmin(req: Request): boolean {
   if (!claims) return false;
   return claims.role === "service_role" || claims.app_metadata?.role === "admin";
 }
+
+/**
+ * Any valid signed-in user (magic-link, password, or service_role).
+ * Use for non-destructive operations (start-training, upload-dataset, etc.)
+ * where any operator-grade user is acceptable.
+ *
+ * RLS on the underlying tables still enforces per-row authorization.
+ */
+export function isAuthenticated(req: Request): boolean {
+  const claims = claimsFromJwt(bearerToken(req));
+  if (!claims) return false;
+  return (
+    claims.role === "service_role" ||
+    claims.role === "authenticated" ||
+    claims.app_metadata?.role === "admin"
+  );
+}

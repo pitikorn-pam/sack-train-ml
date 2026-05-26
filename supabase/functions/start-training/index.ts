@@ -15,7 +15,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
-import { isAdmin } from "../_shared/auth.ts";
+import { isAuthenticated } from "../_shared/auth.ts";
 
 const COLAB_TEMPLATE_URL = Deno.env.get("COLAB_NOTEBOOK_URL")
   ?? "https://colab.research.google.com/github/pitikorn-pam/sack-train-ml/blob/main/notebooks/train_run.ipynb";
@@ -33,8 +33,8 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
   }
-  if (!isAdmin(req)) {
-    return json({ error: "forbidden" }, 403);
+  if (!isAuthenticated(req)) {
+    return json({ error: "forbidden", hint: "sign in first" }, 403);
   }
 
   let body: StartTrainingBody;

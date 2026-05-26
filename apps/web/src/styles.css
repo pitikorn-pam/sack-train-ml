@@ -254,3 +254,164 @@ h1 {
   overflow: auto;
   white-space: pre-wrap;
 }
+
+/* ============================================================================
+ * Top nav + 4-section layout
+ * ============================================================================ */
+
+.app-topbar {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 12px 24px;
+  background: rgba(0,0,0,0.25);
+}
+.topbar-inner {
+  display: flex; align-items: center; gap: 24px;
+}
+.topbar-brand h1 { margin: 0; font-size: 18px; }
+.topbar-brand .eyebrow {
+  margin: 0; font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #6b7280;
+}
+.topbar-nav {
+  display: flex; gap: 4px; flex: 1; justify-content: center;
+}
+.topbar-nav button {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.topbar-nav button:hover { background: rgba(255,255,255,0.04); color: #ecf3ff; }
+.topbar-nav button.active {
+  background: #2563eb;
+  color: white;
+}
+.topbar-account {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px;
+}
+.topbar-user {
+  color: #9ca3af;
+  font-family: ui-monospace, monospace;
+}
+
+.section-main { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* KPI grid (Overview) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.kpi {
+  padding: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
+.kpi-value { font-size: 28px; font-weight: 700; line-height: 1; }
+.kpi-label { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+.kpi-info    .kpi-value { color: #3b82f6; }
+.kpi-success .kpi-value { color: #10b981; }
+.kpi-danger  .kpi-value { color: #ef4444; }
+
+/* Train sub-tabs */
+.sub-tabs {
+  display: flex; gap: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 12px;
+}
+.sub-tabs button {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.sub-tabs button.active {
+  color: #ecf3ff;
+  border-bottom-color: #2563eb;
+}
+
+/* Pills */
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.pill-running   { background: rgba(59,130,246,0.2);  color: #3b82f6; }
+.pill-succeeded { background: rgba(16,185,129,0.2);  color: #10b981; }
+.pill-failed    { background: rgba(239,68,68,0.2);   color: #ef4444; }
+.pill-pending   { background: rgba(156,163,175,0.2); color: #9ca3af; }
+.pill-cancelled { background: rgba(107,114,128,0.2); color: #6b7280; }
+.pill-active    { background: rgba(16,185,129,0.2);  color: #10b981; }
+.pill-archived  { background: rgba(107,114,128,0.2); color: #6b7280; }
+
+.kind-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-right: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* Overview */
+.line-list, .run-mini-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.line-list li {
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.line-list li strong { display: block; margin-bottom: 4px; }
+.line-list li p { margin: 6px 0 0; font-size: 13px; color: #9ca3af; }
+.line-list li code { font-size: 12px; }
+
+.run-mini-list li {
+  display: grid;
+  grid-template-columns: 90px 100px 1fr;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.link-button {
+  background: transparent;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+}
+
+/* Models line header */
+.line-header { display: flex; justify-content: space-between; align-items: baseline; }
+.line-header h2 { margin: 0; }
+
+/* Storage */
+.usage-bar {
+  height: 14px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.usage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  transition: width 0.3s;
+}
+.usage-text {
+  margin: 8px 0 16px;
+  font-size: 14px;
+}

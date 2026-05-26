@@ -9,40 +9,39 @@ const STATUS_COLOR: Record<Run["status"], string> = {
   cancelled: "#6b7280",
 };
 
-export function RunsList({ onSelect }: { onSelect: (id: string) => void }) {
+interface Props {
+  onSelect: (id: string) => void;
+  filter?: Run["status"];
+}
+
+export function RunsList({ onSelect, filter }: Props) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data, error } = await supabase
-        .from("runs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
+      let q = supabase.from("runs").select("*").order("created_at", { ascending: false }).limit(100);
+      if (filter) q = q.eq("status", filter);
+      const { data, error } = await q;
       if (cancelled) return;
       if (error) setError(error.message);
       else setRuns((data ?? []) as Run[]);
     }
     load();
     const ch = supabase
-      .channel("runs-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "runs" },
-        () => load(),
-      )
+      .channel(`runs-live${filter ? `-${filter}` : ""}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "runs" }, () => load())
       .subscribe();
     return () => {
       cancelled = true;
       supabase.removeChannel(ch);
     };
-  }, []);
+  }, [filter]);
 
   return (
     <div className="panel">
-      <h2>Runs</h2>
+      <h2>{filter ? `${filter[0].toUpperCase()}${filter.slice(1)} runs` : "All runs"}</h2>
       {error && <p className="error">{error}</p>}
       <table className="runs-table">
         <thead>
@@ -51,6 +50,7 @@ export function RunsList({ onSelect }: { onSelect: (id: string) => void }) {
             <th>Status</th>
             <th>Run ID</th>
             <th>Git SHA</th>
+            <th>Started</th>
           </tr>
         </thead>
         <tbody>
@@ -66,10 +66,11 @@ export function RunsList({ onSelect }: { onSelect: (id: string) => void }) {
               </td>
               <td><code>{r.id.slice(0, 8)}</code></td>
               <td><code>{r.git_sha ?? "—"}</code></td>
+              <td>{r.started_at ? new Date(r.started_at).toLocaleString() : "—"}</td>
             </tr>
           ))}
           {runs.length === 0 && (
-            <tr><td colSpan={4} className="muted">No runs yet — create one.</td></tr>
+            <tr><td colSpan={5} className="muted">No runs.</td></tr>
           )}
         </tbody>
       </table>

@@ -8,13 +8,13 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { isAdmin } from "../_shared/auth.ts";
+import { isAuthenticated } from "../_shared/auth.ts";
 import { presignPut } from "../_shared/r2.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  if (!isAdmin(req)) return json({ error: "forbidden" }, 403);
+  if (!isAuthenticated(req)) return json({ error: "forbidden" }, 403);
 
   let body: {
     filename?: string;

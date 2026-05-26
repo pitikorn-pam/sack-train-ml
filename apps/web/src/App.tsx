@@ -1,15 +1,25 @@
 import { useState } from "react";
 import { SignIn, SignOutButton, useSession } from "./components/Auth";
-import { RunsList } from "./components/RunsList";
-import { RunDetail } from "./components/RunDetail";
-import { NewRun } from "./components/NewRun";
+import { Overview } from "./sections/Overview";
+import { Train } from "./sections/Train";
+import { Models } from "./sections/Models";
+import { Storage } from "./sections/Storage";
+
+type Section = "overview" | "train" | "models" | "storage";
+
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "train", label: "Train" },
+  { key: "models", label: "Models" },
+  { key: "storage", label: "Storage" },
+];
 
 export default function App() {
   const session = useSession();
-  const [selectedRun, setSelectedRun] = useState<string | null>(null);
-  const [view, setView] = useState<"runs" | "new">("runs");
+  const [section, setSection] = useState<Section>("overview");
 
   if (session === "loading") return <div className="app-shell"><p>Loading…</p></div>;
+
   if (session === null) {
     return (
       <div className="app-shell">
@@ -24,30 +34,36 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">BSCP / Training Pipeline</p>
-          <h1>sack-train-ml</h1>
-          <p className="subtext">Signed in as <code>{session.user.email}</code></p>
-        </div>
-        <div className="status-card">
-          <SignOutButton />
+      <header className="app-topbar" aria-label="Model registry navigation">
+        <div className="topbar-inner">
+          <div className="topbar-brand">
+            <p className="eyebrow">BSCP</p>
+            <h1>sack-train-ml</h1>
+          </div>
+          <nav className="topbar-nav">
+            {SECTIONS.map((s) => (
+              <button
+                key={s.key}
+                className={section === s.key ? "active" : ""}
+                onClick={() => setSection(s.key)}
+                type="button"
+              >
+                {s.label}
+              </button>
+            ))}
+          </nav>
+          <div className="topbar-account">
+            <span className="topbar-user">{session.user.email}</span>
+            <SignOutButton />
+          </div>
         </div>
       </header>
 
-      <nav className="nav-tabs">
-        <button onClick={() => { setView("runs"); setSelectedRun(null); }} disabled={view === "runs" && !selectedRun}>Runs</button>
-        <button onClick={() => { setView("new"); setSelectedRun(null); }} disabled={view === "new"}>New run</button>
-      </nav>
-
-      <main className="grid">
-        {selectedRun ? (
-          <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
-        ) : view === "new" ? (
-          <NewRun onCreated={(id) => { setSelectedRun(id); setView("runs"); }} />
-        ) : (
-          <RunsList onSelect={setSelectedRun} />
-        )}
+      <main className="section-main">
+        {section === "overview" && <Overview onJumpToTrain={() => setSection("train")} />}
+        {section === "train" && <Train />}
+        {section === "models" && <Models />}
+        {section === "storage" && <Storage />}
       </main>
     </div>
   );
