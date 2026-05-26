@@ -14,12 +14,31 @@ export function useSession(): Session | null | "loading" {
   return session;
 }
 
+const QUICK_USERS = [
+  { label: "admin@bscp.local", email: "admin@bscp.local", password: "admin1234", role: "admin" as const },
+  { label: "user@bscp.local",  email: "user@bscp.local",  password: "user1234",  role: "authenticated" as const },
+];
+
 export function SignIn() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
 
-  async function submit(e: React.FormEvent) {
+  async function quickSignIn(email: string, password: string) {
+    setError(null);
+    setLoading(email);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function sendMagic(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({ email });
@@ -27,33 +46,54 @@ export function SignIn() {
     else setSent(true);
   }
 
-  if (sent) {
-    return (
-      <div className="panel">
-        <h2>Check your email</h2>
-        <p>A sign-in link was sent to <code>{email}</code>.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="panel">
-      <h2>Sign in</h2>
-      <form onSubmit={submit} className="stack">
-        <label>
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@ipassion.co.th"
-          />
-        </label>
-        <button type="submit">Send magic link</button>
+    <>
+      <div className="panel">
+        <h2>Quick sign in (dev)</h2>
+        <p className="muted">Pre-seeded test users — one click to enter.</p>
+        <div className="quick-users">
+          {QUICK_USERS.map((u) => (
+            <button
+              key={u.email}
+              className={`quick-user quick-user-${u.role}`}
+              onClick={() => quickSignIn(u.email, u.password)}
+              disabled={loading === u.email}
+              type="button"
+            >
+              <div className="quick-user-role">
+                {u.role === "admin" ? "★ admin" : "authenticated"}
+              </div>
+              <code>{u.label}</code>
+              <div className="quick-user-hint">
+                {loading === u.email ? "Signing in…" : "click to sign in"}
+              </div>
+            </button>
+          ))}
+        </div>
         {error && <p className="error">{error}</p>}
-      </form>
-    </div>
+      </div>
+
+      <details className="panel">
+        <summary><strong>Or sign in with magic link</strong></summary>
+        {sent ? (
+          <p>A sign-in link was sent to <code>{email}</code>.</p>
+        ) : (
+          <form onSubmit={sendMagic} className="stack">
+            <label>
+              Email
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@ipassion.co.th"
+              />
+            </label>
+            <button type="submit">Send magic link</button>
+          </form>
+        )}
+      </details>
+    </>
   );
 }
 

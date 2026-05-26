@@ -415,3 +415,51 @@ h1 {
   margin: 8px 0 16px;
   font-size: 14px;
 }
+
+/* ============================================================================
+ * Quick sign-in dev panel
+ * ============================================================================ */
+
+.quick-users {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.quick-user {
+  text-align: left;
+  padding: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.quick-user:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.24);
+}
+.quick-user:disabled { opacity: 0.6; cursor: wait; }
+.quick-user code { font-size: 13px; }
+.quick-user-role {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.quick-user-admin .quick-user-role { color: #fbbf24; }
+.quick-user-authenticated .quick-user-role { color: #3b82f6; }
+.quick-user-hint { font-size: 11px; color: #6b7280; }
+
+details.panel summary {
+  cursor: pointer;
+  list-style: revert;
+  padding: 4px 0;
+}
+details.panel[open] summary {
+  margin-bottom: 12px;
+}
