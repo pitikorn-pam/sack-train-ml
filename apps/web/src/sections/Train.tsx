@@ -9,12 +9,8 @@ export function Train() {
   const [tab, setTab] = useState<Tab>("recent");
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
 
-  if (selectedRun) {
-    return <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />;
-  }
-
   return (
-    <div className="train">
+    <div>
       <div className="sub-tabs">
         <button className={tab === "form" ? "active" : ""} onClick={() => setTab("form")}>
           New run
@@ -27,16 +23,31 @@ export function Train() {
         </button>
       </div>
 
-      {tab === "form" && (
-        <NewRun
-          onCreated={(id) => {
-            setSelectedRun(id);
-            setTab("live");
-          }}
-        />
-      )}
-      {tab === "live" && <RunsList filter="running" onSelect={setSelectedRun} />}
-      {tab === "recent" && <RunsList onSelect={setSelectedRun} />}
+      <div className="train-layout">
+        <div>
+          {tab === "form" && (
+            <NewRun
+              onCreated={(id) => {
+                setSelectedRun(id);
+                setTab("live");
+              }}
+            />
+          )}
+          {tab === "live" && <RunsList filter="running" onSelect={setSelectedRun} />}
+          {tab === "recent" && <RunsList onSelect={setSelectedRun} />}
+        </div>
+
+        <div>
+          {selectedRun ? (
+            <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
+          ) : (
+            <div className="panel empty-state">
+              <p>Select a run</p>
+              <p className="muted">Click a row on the left to see live metrics + logs.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

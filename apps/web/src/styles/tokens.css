@@ -1,0 +1,130 @@
+/* =============================================================================
+ * tokens.css — Design tokens mirroring DESIGN.md
+ * =============================================================================
+ * Edit DESIGN.md first, then update tokens here to match.
+ * Never inline hex in component CSS — always reference tokens.
+ * ============================================================================= */
+
+:root {
+  /* -------------------- Colors: Brand & accent -------------------- */
+  --color-primary: #0080c8;
+  --color-primary-active: #0066a2;
+  --color-primary-hover: #1e8fd1;
+  --color-primary-soft: #e5f2fa;
+  --color-primary-ring: #0080c833;
+  --color-accent-sky: #38bdf8;
+  --color-accent-cyan: #06b6d4;
+
+  /* -------------------- Colors: Text -------------------- */
+  --color-ink: #0b1220;
+  --color-body-strong: #1f2937;
+  --color-body: #374151;
+  --color-muted: #6b7280;
+  --color-muted-soft: #9ca3af;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #f8fafc;
+  --color-on-dark-soft: #a3b1c2;
+
+  /* -------------------- Colors: Surface -------------------- */
+  --color-canvas: #ffffff;
+  --color-surface-soft: #fafbfc;
+  --color-surface-card: #f5f7fa;
+  --color-surface-card-strong: #eef2f6;
+  --color-surface-dark: #0b1a2c;
+  --color-surface-dark-elevated: #13243a;
+  --color-surface-dark-soft: #0f1f33;
+  --color-hairline: #e5e7eb;
+  --color-hairline-soft: #f1f3f5;
+
+  /* -------------------- Colors: Semantic -------------------- */
+  --color-success: #10b981;
+  --color-success-soft: #d1fae5;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fee2e2;
+  --color-info: #3b82f6;
+  --color-info-soft: #dbeafe;
+
+  /* -------------------- Colors: Status (canonical) -------------------- */
+  --color-status-pending: #9ca3af;
+  --color-status-running: var(--color-primary);
+  --color-status-succeeded: var(--color-success);
+  --color-status-failed: var(--color-danger);
+  --color-status-cancelled: #6b7280;
+
+  /* -------------------- Chart palette -------------------- */
+  --color-chart-primary: var(--color-primary);
+  --color-chart-success: var(--color-success);
+  --color-chart-warning: var(--color-warning);
+  --color-chart-danger: var(--color-danger);
+  --color-chart-sky: var(--color-accent-sky);
+  --color-chart-cyan: var(--color-accent-cyan);
+  --color-chart-purple: #8b5cf6;
+  --color-chart-pink: #ec4899;
+  --color-chart-orange: #f97316;
+
+  /* -------------------- Typography: families -------------------- */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* -------------------- Typography: sizes -------------------- */
+  --fs-display-xl: 48px;
+  --fs-display-lg: 36px;
+  --fs-display-md: 28px;
+  --fs-display-sm: 22px;
+  --fs-title-lg: 18px;
+  --fs-title-md: 16px;
+  --fs-title-sm: 14px;
+  --fs-body-md: 14px;
+  --fs-body-sm: 13px;
+  --fs-label: 13px;
+  --fs-caption: 12px;
+  --fs-caption-upper: 11px;
+  --fs-code: 13px;
+  --fs-code-inline: 12px;
+  --fs-metric: 28px;
+  --fs-metric-sm: 16px;
+
+  /* -------------------- Weights -------------------- */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* -------------------- Spacing -------------------- */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 28px;
+  --space-xxl: 40px;
+  --space-section: 56px;
+
+  /* -------------------- Radius -------------------- */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-xxl: 16px;
+  --radius-pill: 9999px;
+
+  /* -------------------- Elevation -------------------- */
+  --elev-hairline: 0 0 0 1px var(--color-hairline);
+  --elev-raise-sm: 0 1px 2px rgba(11, 18, 32, 0.04), 0 1px 3px rgba(11, 18, 32, 0.06);
+  --elev-raise-md: 0 4px 6px -1px rgba(11, 18, 32, 0.06), 0 2px 4px -2px rgba(11, 18, 32, 0.04);
+  --elev-raise-lg: 0 10px 15px -3px rgba(11, 18, 32, 0.08), 0 4px 6px -4px rgba(11, 18, 32, 0.06);
+  --elev-raise-xl: 0 20px 25px -5px rgba(11, 18, 32, 0.1), 0 8px 10px -6px rgba(11, 18, 32, 0.08);
+  --elev-focus-ring: 0 0 0 3px var(--color-primary-ring);
+
+  /* -------------------- Transitions -------------------- */
+  --t-fast: 120ms ease-out;
+  --t-base: 180ms ease-out;
+  --t-slow: 260ms ease-out;
+
+  /* -------------------- Layout -------------------- */
+  --topbar-height: 56px;
+  --content-max: 1280px;
+}

@@ -208,16 +208,16 @@ export function MetricChart({ metrics }: { metrics: RunMetric[] }) {
           onMouseLeave={() => setHover(null)}
         >
           {/* axes */}
-          <line x1={PADDING.left} x2={PADDING.left} y1={PADDING.top} y2={HEIGHT - PADDING.bottom} stroke="#334155" />
-          <line x1={PADDING.left} x2={WIDTH - PADDING.right} y1={HEIGHT - PADDING.bottom} y2={HEIGHT - PADDING.bottom} stroke="#334155" />
+          <line x1={PADDING.left} x2={PADDING.left} y1={PADDING.top} y2={HEIGHT - PADDING.bottom} className="chart-axis" />
+          <line x1={PADDING.left} x2={WIDTH - PADDING.right} y1={HEIGHT - PADDING.bottom} y2={HEIGHT - PADDING.bottom} className="chart-axis" />
           {/* y ticks */}
           {[0, 0.25, 0.5, 0.75, 1].map((t) => {
             const v = yBounds.lo + t * (yBounds.hi - yBounds.lo);
             const y = yScale(v);
             return (
               <g key={t}>
-                <line x1={PADDING.left} x2={WIDTH - PADDING.right} y1={y} y2={y} stroke="#1f2937" />
-                <text x={PADDING.left - 4} y={y + 3} fontSize="10" fill="#64748b" textAnchor="end">
+                <line x1={PADDING.left} x2={WIDTH - PADDING.right} y1={y} y2={y} className="chart-grid" />
+                <text x={PADDING.left - 4} y={y + 3} fontSize="10" className="chart-tick" textAnchor="end">
                   {v.toFixed(2)}
                 </text>
               </g>
@@ -228,7 +228,7 @@ export function MetricChart({ metrics }: { metrics: RunMetric[] }) {
             const s = xMin + t * (xMax - xMin);
             const x = xScale(s);
             return (
-              <text key={t} x={x} y={HEIGHT - PADDING.bottom + 14} fontSize="10" fill="#64748b" textAnchor="middle">
+              <text key={t} x={x} y={HEIGHT - PADDING.bottom + 14} fontSize="10" className="chart-tick" textAnchor="middle">
                 {Math.round(s)}
               </text>
             );
@@ -257,7 +257,7 @@ export function MetricChart({ metrics }: { metrics: RunMetric[] }) {
               x2={xScale(hover.step)}
               y1={PADDING.top}
               y2={HEIGHT - PADDING.bottom}
-              stroke="#475569"
+              className="chart-hover"
               strokeDasharray="3 3"
             />
           )}
