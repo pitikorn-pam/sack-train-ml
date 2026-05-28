@@ -58,32 +58,25 @@ export function Storage({ isAdmin }: { isAdmin: boolean }) {
   async function deleteVersion() {
     if (!confirm) return;
     try {
-      const { data, error } = await supabase.functions.invoke("storage-usage", {
+      // storage-usage edge fn dispatches on URL pathname suffix /delete or /archive.
+      // supabase.functions.invoke does not let us append a path suffix, so we
+      // call the function URL directly with the active session token.
+      const session = (await supabase.auth.getSession()).data.session;
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const res = await fetch(`${baseUrl}/functions/v1/storage-usage/delete`, {
         method: "POST",
-        body: { version_id: confirm.id },
-        headers: { "x-supabase-action": "delete" },
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session?.access_token ?? anonKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ version_id: confirm.id }),
       });
-      // storage-usage uses /delete path — invoke doesn't support path suffix
-      // Fall back to direct fetch with the trailing path:
-      if (error) {
-        // workaround: call with path suffix via raw fetch
-        const session = (await supabase.auth.getSession()).data.session;
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/storage-usage/delete`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-            Authorization: `Bearer ${session?.access_token ?? ""}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ version_id: confirm.id }),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`${res.status}: ${text}`);
-        }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
       }
-      void data;
       push({ tone: "success", title: "Version deleted", detail: `v${confirm.semver} removed from R2 + DB` });
       setConfirm(null);
       load();

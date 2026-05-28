@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Download, History } from "lucide-react";
 import { supabase, type ModelLine } from "../lib/supabase";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
-import { formatDate, formatDateTime, formatBytes } from "../lib/format";
+import { formatDate, formatDateTime, formatBytes, formatRelative } from "../lib/format";
 
 interface Version {
   id: string;
@@ -41,6 +42,7 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
   const [versions, setVersions] = useState<Version[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [history, setHistory] = useState<Array<{ id: string; channel_id: string; from_version_id: string | null; to_version_id: string | null; changed_at: string }>>([]);
   const [selectedVer, setSelectedVer] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [modal, setModal] = useState<null | {
@@ -53,17 +55,19 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [{ data: l }, { data: v }, { data: c }, { data: d }] = await Promise.all([
+      const [{ data: l }, { data: v }, { data: c }, { data: d }, { data: h }] = await Promise.all([
         supabase.from("model_lines").select("*"),
         supabase.from("versions").select("*").order("created_at", { ascending: false }).limit(100),
         supabase.from("channels").select("*"),
         supabase.from("channel_deployments").select("*").order("deployed_at", { ascending: false }),
+        supabase.from("channel_history").select("id,channel_id,from_version_id,to_version_id,changed_at").order("changed_at", { ascending: false }).limit(50),
       ]);
       if (cancelled) return;
       setLines((l ?? []) as ModelLine[]);
       setVersions((v ?? []) as Version[]);
       setChannels((c ?? []) as Channel[]);
       setDeployments((d ?? []) as Deployment[]);
+      setHistory((h ?? []) as any);
     }
     load();
     const ch = supabase
@@ -222,6 +226,10 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
               version={selectedVersion}
               channels={channelsForLine(selectedVersion.model_line_id)}
               deployments={deployments.filter((d) => d.version_id === selectedVersion.id)}
+              history={history.filter((h) => {
+                const channelIds = channelsForLine(selectedVersion.model_line_id).map((c) => c.id);
+                return channelIds.includes(h.channel_id);
+              })}
               isAdmin={isAdmin}
               onDeploy={(channel) => setModal({ type: "deploy", version: selectedVersion, channel })}
               onSetDefault={(channel) => setModal({ type: "set-default", version: selectedVersion, channel })}
@@ -257,10 +265,28 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+async function downloadArtifact(r2_key: string) {
+  const { data, error } = await supabase.functions.invoke("download-artifact", {
+    body: { r2_key },
+  });
+  if (error || !data?.download_url) {
+    alert(`Download failed: ${error?.message ?? "no URL returned"}`);
+    return;
+  }
+  // Trigger browser download via temporary anchor
+  const a = document.createElement("a");
+  a.href = data.download_url;
+  a.download = r2_key.split("/").pop() ?? "artifact";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function VersionDetailPanel({
   version,
   channels,
   deployments,
+  history,
   isAdmin,
   onDeploy,
   onSetDefault,
@@ -269,6 +295,7 @@ function VersionDetailPanel({
   version: Version;
   channels: Channel[];
   deployments: Deployment[];
+  history: Array<{ id: string; channel_id: string; from_version_id: string | null; to_version_id: string | null; changed_at: string }>;
   isAdmin: boolean;
   onDeploy: (channel: string) => void;
   onSetDefault: (channel: string) => void;
@@ -344,6 +371,13 @@ function VersionDetailPanel({
                         {a.quantization.precision} · {a.quantization.method ?? ""}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => downloadArtifact(a.key as string)}
+                    >
+                      <Download size={12} /> Download
+                    </button>
                   </>
                 )}
               </div>
@@ -393,6 +427,32 @@ function VersionDetailPanel({
           })}
         </ul>
       </section>
+
+      {history.length > 0 && (
+        <section className="panel">
+          <h3><History size={14} style={{ verticalAlign: "middle", marginRight: 4 }} /> Deployment history</h3>
+          <ul className="history-timeline">
+            {history.slice(0, 10).map((h) => {
+              const channelName = channels.find((c) => c.id === h.channel_id)?.name ?? "?";
+              const action = h.to_version_id === null
+                ? "cleared"
+                : h.from_version_id === null
+                  ? "deployed"
+                  : "promoted";
+              return (
+                <li key={h.id}>
+                  <span className="history-dot" />
+                  <span className="history-detail">
+                    <strong>{channelName}</strong> {action}
+                    {h.to_version_id && <> · <code>{h.to_version_id.slice(0, 8)}</code></>}
+                  </span>
+                  <span className="muted">{formatRelative(h.changed_at)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
