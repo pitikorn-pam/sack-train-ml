@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         # 2. Materialize + validate dataset
-        dataset_yaml = _materialize_dataset(config.dataset, client, run_id)
+        dataset_yaml = _materialize_dataset(config, client, run_id)
         stats = validate_dataset(dataset_yaml, config.classes)
         client.log_step(run_id, 2, "dataset", "ok",
                         f"dataset OK · train={stats.train_images} val={stats.val_images}")
@@ -260,23 +260,75 @@ def _current_git_sha(root: Path) -> str | None:
         return None
 
 
-def _materialize_dataset(dataset_ref: str, client: RegistryClient, run_id: str) -> Path:
-    """If ``dataset_ref`` starts with ``datasets/`` → fetch via R2 presigned URL.
-    Otherwise treat as a local path.
+def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Path:
+    """Materialize the YOLO dataset locally and return the path to data.yaml.
+
+    Supports three forms:
+      1. ``config.dataset`` is a local path (used in dev/tests)
+      2. ``config.dataset`` is ``datasets/...`` only → just the YAML (paths must
+         already exist on disk; rare)
+      3. ``config.dataset_bundle`` is set → download the ZIP, extract it, and
+         (if a separate ``config.dataset`` YAML exists) drop the YAML into the
+         extracted root so its relative paths resolve.
     """
-    if dataset_ref.startswith("datasets/"):
-        url = client.download_dataset(dataset_ref)
-        local = REPO_ROOT / "data" / "remote" / Path(dataset_ref).name
-        local.parent.mkdir(parents=True, exist_ok=True)
-        from urllib.request import urlopen
-        with urlopen(url, timeout=60) as r, open(local, "wb") as f:
+    from urllib.request import urlopen
+
+    def _download(ref: str, dest: Path) -> None:
+        url = client.download_dataset(ref)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urlopen(url, timeout=120) as r, open(dest, "wb") as f:
             while True:
                 chunk = r.read(1 << 20)
                 if not chunk:
                     break
                 f.write(chunk)
+
+    dataset_ref = config.dataset
+    bundle_ref = getattr(config, "dataset_bundle", None)
+
+    if bundle_ref:
+        zip_path = REPO_ROOT / "data" / "remote" / Path(bundle_ref).name
+        _download(bundle_ref, zip_path)
+        extract_root = REPO_ROOT / "data" / "extracted" / run_id
+        if extract_root.exists():
+            import shutil
+            shutil.rmtree(extract_root)
+        extract_root.mkdir(parents=True, exist_ok=True)
+
+        import zipfile
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(extract_root)
+        client.log_step(run_id, 2, "dataset", "info",
+                        f"extracted {bundle_ref} → {extract_root}")
+
+        # If the zip has a single top-level directory, descend into it so
+        # the YAML's relative paths line up.
+        entries = [p for p in extract_root.iterdir() if not p.name.startswith(".")]
+        if len(entries) == 1 and entries[0].is_dir():
+            extract_root = entries[0]
+
+        # Locate or place data.yaml inside the extracted root.
+        if dataset_ref and dataset_ref.startswith("datasets/"):
+            local_yaml = extract_root / "data.yaml"
+            _download(dataset_ref, local_yaml)
+            client.log_step(run_id, 2, "dataset", "info",
+                            f"pulled {dataset_ref} → {local_yaml}")
+            return local_yaml
+
+        for candidate in ("data.yaml", "dataset.yaml", "yolo.yaml"):
+            p = extract_root / candidate
+            if p.exists():
+                return p
+        raise FileNotFoundError(
+            f"no data.yaml inside bundle {bundle_ref} and no dataset YAML configured"
+        )
+
+    if dataset_ref and dataset_ref.startswith("datasets/"):
+        local = REPO_ROOT / "data" / "remote" / Path(dataset_ref).name
+        _download(dataset_ref, local)
         client.log_step(run_id, 2, "dataset", "info", f"pulled {dataset_ref} → {local}")
         return local
+
     return Path(dataset_ref)
 
 
