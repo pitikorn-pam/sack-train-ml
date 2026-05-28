@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { Star, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 export function useSession(): Session | null | "loading" {
@@ -61,7 +62,8 @@ export function SignIn() {
               type="button"
             >
               <div className="quick-user-role">
-                {u.role === "admin" ? "★ admin" : "authenticated"}
+                {u.role === "admin" && <Star size={11} fill="currentColor" strokeWidth={0} />}
+                {u.role === "admin" ? "admin" : "authenticated"}
               </div>
               <code>{u.label}</code>
               <div className="quick-user-hint">
@@ -99,7 +101,8 @@ export function SignIn() {
 
 export function SignOutButton() {
   return (
-    <button type="button" onClick={() => supabase.auth.signOut()}>
+    <button type="button" className="button" onClick={() => supabase.auth.signOut()}>
+      <LogOut size={14} strokeWidth={2} />
       Sign out
     </button>
   );

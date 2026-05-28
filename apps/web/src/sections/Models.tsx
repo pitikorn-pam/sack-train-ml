@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase, type ModelLine } from "../lib/supabase";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
+import { formatDate, formatDateTime, formatBytes } from "../lib/format";
 
 interface Version {
   id: string;
@@ -193,7 +194,7 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
                     <div className="deploy-tags">
                       {vDeploys.map((d) => (
                         <span key={d.id} className={`pill pill-${d.is_default ? "production" : "info"}`}>
-                          {d.channel_name}{d.is_default ? " ★" : ""}
+                          {d.channel_name}{d.is_default ? " ★" : ""}{/* keep star char inside pill text for now */}
                         </span>
                       ))}
                     </div>
@@ -204,7 +205,7 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
                   <span>mAP50: <strong>{map50 != null ? map50.toFixed(3) : "—"}</strong></span>
                   <span className="muted">{Object.keys(v.artifacts ?? {}).length} artifacts</span>
                 </div>
-                <div className="version-card-foot muted">{new Date(v.created_at).toLocaleDateString()}</div>
+                <div className="version-card-foot muted">{formatDate(v.created_at)}</div>
               </button>
             );
           })}
@@ -283,7 +284,7 @@ function VersionDetailPanel({
       <section className="panel">
         <h2>v{version.semver}</h2>
         <p className="muted">
-          Created {new Date(version.created_at).toLocaleString()} ·
+          Created {formatDateTime(version.created_at)} ·
           run <code>{version.run_id.slice(0, 8)}</code>
         </p>
         <p className="muted">compat: <code>{version.compat_signature.slice(0, 16)}…</code></p>
@@ -396,10 +397,3 @@ function VersionDetailPanel({
   );
 }
 
-function formatBytes(b: number | null | undefined): string {
-  if (b == null) return "—";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

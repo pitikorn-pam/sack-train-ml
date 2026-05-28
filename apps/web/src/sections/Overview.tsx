@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
+import { FilePenLine, Rocket, Package, Target, Play } from "lucide-react";
 import { supabase, type Run, type ModelLine } from "../lib/supabase";
+import { formatDateTime } from "../lib/format";
 
 interface Counts {
   modelLines: number;
@@ -8,11 +11,17 @@ interface Counts {
   channels: number;
 }
 
-const JOURNEY = [
-  { icon: "✏️", title: "Create", body: "Configure dataset + hyperparams and submit." },
-  { icon: "🚀", title: "Train", body: "Launch Colab — metrics stream back live." },
-  { icon: "📦", title: "Release", body: "On success, a new version row + R2 artifacts appear." },
-  { icon: "🎯", title: "Deploy", body: "Promote a version to a channel — edge devices pick it up." },
+interface JourneyStep {
+  Icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  title: string;
+  body: string;
+}
+
+const JOURNEY: JourneyStep[] = [
+  { Icon: FilePenLine, title: "Create", body: "Configure dataset + hyperparams and submit." },
+  { Icon: Rocket,      title: "Train",  body: "Launch Colab — metrics stream back live." },
+  { Icon: Package,     title: "Release", body: "On success, a new version row + R2 artifacts appear." },
+  { Icon: Target,      title: "Deploy",  body: "Promote a version to a channel — edge devices pick it up." },
 ];
 
 export function Overview({ onJump }: { onJump: (section: "train" | "models" | "storage") => void }) {
@@ -79,18 +88,21 @@ export function Overview({ onJump }: { onJump: (section: "train" | "models" | "s
           <h2>Operator journey</h2>
           <p className="muted">From dataset to deployed model — four short steps.</p>
           <div className="journey-list">
-            {JOURNEY.map((s) => (
-              <div key={s.title} className="journey-card">
-                <span className="journey-icon" aria-hidden="true">{s.icon}</span>
+            {JOURNEY.map(({ Icon, title, body }) => (
+              <div key={title} className="journey-card">
+                <span className="journey-icon" aria-hidden="true">
+                  <Icon size={20} strokeWidth={1.75} />
+                </span>
                 <div>
-                  <h3>{s.title}</h3>
-                  <p>{s.body}</p>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
                 </div>
               </div>
             ))}
           </div>
           <button onClick={() => onJump("train")} className="button primary">
-            ▶ Start a training run
+            <Play size={14} strokeWidth={2.5} />
+            Start a training run
           </button>
         </section>
 
@@ -107,7 +119,7 @@ export function Overview({ onJump }: { onJump: (section: "train" | "models" | "s
                 <li key={r.id} onClick={() => onJump("train")} className="clickable">
                   <code>{r.id.slice(0, 8)}</code>
                   <span className={`pill pill-${r.status}`}>{r.status}</span>
-                  <span className="muted">{new Date(r.created_at).toLocaleString()}</span>
+                  <span className="muted">{formatDateTime(r.created_at)}</span>
                 </li>
               ))}
             </ul>

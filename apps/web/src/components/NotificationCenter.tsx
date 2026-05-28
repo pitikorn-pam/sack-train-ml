@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { Bell } from "lucide-react";
 import { supabase, type Run } from "../lib/supabase";
+import { formatRelative } from "../lib/format";
 import {
   deriveActivities,
   loadReadSet,
@@ -101,7 +103,7 @@ export function NotificationCenter({
         onClick={() => setOpen((x) => !x)}
         aria-label={`Notifications (${unread} unread)`}
       >
-        <span aria-hidden="true">🔔</span>
+        <Bell size={16} aria-hidden="true" />
         {unread > 0 && <span className="notif-badge">{unread > 99 ? "99+" : unread}</span>}
       </button>
 
@@ -123,7 +125,7 @@ export function NotificationCenter({
               >
                 <div className="notif-row">
                   <span className="notif-title">{a.title}</span>
-                  <span className="notif-time">{relativeTime(a.ts)}</span>
+                  <span className="notif-time">{formatRelative(a.ts)}</span>
                 </div>
                 <div className="notif-detail">{a.detail}</div>
               </li>
@@ -135,12 +137,3 @@ export function NotificationCenter({
   );
 }
 
-function relativeTime(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso).getTime();
-  const diff = (Date.now() - d) / 1000;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
-}

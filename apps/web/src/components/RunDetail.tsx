@@ -1,14 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, XCircle, RotateCcw } from "lucide-react";
 import { supabase, type Run, type RunMetric } from "../lib/supabase";
 import { MetricChart } from "./MetricChart";
 import { ColabSteps } from "./ColabSteps";
+import { useToast } from "./Toast";
+import { ConfirmModal } from "./ConfirmModal";
+import { formatDateTime } from "../lib/format";
 
 const COLAB_URL = (runId: string) =>
   `https://colab.research.google.com/github/pitikorn-pam/sack-train-ml/blob/main/notebooks/train_run.ipynb?run_id=${runId}`;
 
-export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
+export function RunDetail({
+  runId,
+  onBack,
+  onRecreate,
+}: {
+  runId: string;
+  onBack: () => void;
+  onRecreate?: (config: Record<string, unknown>) => void;
+}) {
   const [run, setRun] = useState<Run | null>(null);
   const [metrics, setMetrics] = useState<RunMetric[]>([]);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const { push } = useToast();
+
+  async function cancelRun() {
+    setCancelOpen(false);
+    const { error } = await supabase
+      .from("runs")
+      .update({ status: "cancelled", finished_at: new Date().toISOString() })
+      .eq("id", runId);
+    if (error) push({ tone: "danger", title: "Cancel failed", detail: error.message });
+    else push({ tone: "info", title: "Run cancelled", detail: runId.slice(0, 8) });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +86,10 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
 
   return (
     <div className="run-detail">
-      <button onClick={onBack} className="link-button">← Back</button>
+      <button onClick={onBack} className="link-button" type="button">
+        <ChevronLeft size={14} strokeWidth={2} />
+        Back
+      </button>
 
       <section className="panel run-header">
         <div>
@@ -70,7 +97,7 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
           <p className="muted">
             Status: <span className={`pill pill-${displayStatus}`}>{displayStatus}</span>
             {run?.git_sha && <> · git <code>{run.git_sha}</code></>}
-            {run?.started_at && <> · started {new Date(run.started_at).toLocaleString()}</>}
+            {run?.started_at && <> · started {formatDateTime(run.started_at)}</>}
           </p>
           {progress !== null && (
             <div className="run-progress">
@@ -78,8 +105,34 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
               <span>{progress.toFixed(0)}%</span>
             </div>
           )}
+          <div className="run-actions">
+            {(displayStatus === "running" || displayStatus === "waiting" || displayStatus === "pending") && (
+              <button type="button" className="button danger" onClick={() => setCancelOpen(true)}>
+                <XCircle size={14} /> Cancel
+              </button>
+            )}
+            {onRecreate && (
+              <button
+                type="button"
+                className="button"
+                onClick={() => onRecreate(cfg)}
+              >
+                <RotateCcw size={14} /> Re-create with same config
+              </button>
+            )}
+          </div>
         </div>
       </section>
+
+      <ConfirmModal
+        open={cancelOpen}
+        title="Cancel this run?"
+        message="The run will be marked as cancelled and finalize. If Colab is still running, the notebook will exit at the next callback. This cannot be undone."
+        confirmLabel="Cancel run"
+        danger
+        onConfirm={cancelRun}
+        onCancel={() => setCancelOpen(false)}
+      />
 
       {showColab && (
         <section className="panel">

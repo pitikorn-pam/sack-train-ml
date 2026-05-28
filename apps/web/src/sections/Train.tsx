@@ -8,6 +8,7 @@ type Tab = "form" | "live" | "recent";
 export function Train() {
   const [tab, setTab] = useState<Tab>("recent");
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [prefillConfig, setPrefillConfig] = useState<Record<string, unknown> | null>(null);
 
   return (
     <div>
@@ -27,8 +28,10 @@ export function Train() {
         <div>
           {tab === "form" && (
             <NewRun
+              initialConfig={prefillConfig}
               onCreated={(id) => {
                 setSelectedRun(id);
+                setPrefillConfig(null);
                 setTab("live");
               }}
             />
@@ -39,7 +42,15 @@ export function Train() {
 
         <div>
           {selectedRun ? (
-            <RunDetail runId={selectedRun} onBack={() => setSelectedRun(null)} />
+            <RunDetail
+              runId={selectedRun}
+              onBack={() => setSelectedRun(null)}
+              onRecreate={(cfg) => {
+                setPrefillConfig(cfg);
+                setSelectedRun(null);
+                setTab("form");
+              }}
+            />
           ) : (
             <div className="panel empty-state">
               <p>Select a run</p>

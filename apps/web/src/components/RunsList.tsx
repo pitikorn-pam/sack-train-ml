@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase, type Run } from "../lib/supabase";
+import { formatDateTime } from "../lib/format";
 
 const STATUS_COLOR: Record<Run["status"], string> = {
   pending: "#9ca3af",
@@ -56,7 +57,7 @@ export function RunsList({ onSelect, filter }: Props) {
         <tbody>
           {runs.map((r) => (
             <tr key={r.id} onClick={() => onSelect(r.id)} className="clickable">
-              <td>{new Date(r.created_at).toLocaleString()}</td>
+              <td>{formatDateTime(r.created_at)}</td>
               <td>
                 <span
                   className="status-dot"
@@ -66,7 +67,7 @@ export function RunsList({ onSelect, filter }: Props) {
               </td>
               <td><code>{r.id.slice(0, 8)}</code></td>
               <td><code>{r.git_sha ?? "—"}</code></td>
-              <td>{r.started_at ? new Date(r.started_at).toLocaleString() : "—"}</td>
+              <td>{r.started_at ? formatDateTime(r.started_at) : "—"}</td>
             </tr>
           ))}
           {runs.length === 0 && (

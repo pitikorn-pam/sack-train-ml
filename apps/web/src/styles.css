@@ -1037,3 +1037,55 @@ details[open] summary { margin-bottom: var(--space-sm); }
 .metric-svg .chart-grid { stroke: var(--color-hairline-soft); }
 .metric-svg .chart-tick { fill: var(--color-muted-soft); }
 .metric-svg .chart-hover { stroke: var(--color-muted-soft); }
+
+/* Topbar with logo */
+.topbar-brand {
+  display: flex; flex-direction: row; align-items: center; gap: var(--space-xs);
+}
+.topbar-brand-text { display: flex; flex-direction: column; line-height: 1; }
+.role-badge { display: inline-flex; align-items: center; gap: 3px; }
+
+/* Lucide icon inline alignment */
+button svg, a svg { display: inline-block; vertical-align: middle; }
+.journey-icon { display: inline-flex; color: var(--color-primary); }
+.journey-icon svg { display: block; }
+
+/* ColabSteps open-in-colab button inherits .button styling — icon spacing */
+.button svg { flex-shrink: 0; }
+
+/* Auth quick-user: replace star emoji */
+.quick-user-role { display: inline-flex; align-items: center; gap: 3px; }
+
+/* Hint auto-position based on parent context. When inside a .field-row narrow column,
+   anchor tooltip to right to avoid clipping. */
+.field-row label .hint-tooltip {
+  left: auto; right: 0; transform: none;
+}
+.field-row label .hint-tooltip::after { display: none; }
+
+/* Cancel/Re-create action row inside run-detail */
+.run-actions { display: flex; gap: var(--space-xs); flex-wrap: wrap; margin-top: var(--space-xs); }
+
+/* Dataset uploader */
+.dataset-uploader {
+  display: flex; flex-direction: column; gap: var(--space-sm);
+  background: var(--color-surface-soft);
+  border: 1px dashed var(--color-hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+}
+.uploader-row { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; }
+.uploader-row strong { font-size: var(--fs-body-sm); color: var(--color-body-strong); flex: 0 0 100px; }
+.uploader-row .muted { font-family: var(--font-mono); font-size: var(--fs-code-inline); word-break: break-all; }
+.uploader-progress {
+  height: 4px; background: var(--color-hairline-soft);
+  border-radius: var(--radius-pill); overflow: hidden;
+  flex: 1; min-width: 100px;
+}
+.uploader-progress-fill {
+  height: 100%; background: var(--color-primary);
+  transition: width 0.2s;
+}
+.uploader-status { font-size: var(--fs-caption); font-weight: var(--fw-medium); }
+.uploader-status.ok { color: var(--color-success); }
+.uploader-status.err { color: var(--color-danger); }

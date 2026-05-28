@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
+import { formatDate, formatBytes } from "../lib/format";
 
 interface Usage {
   used_bytes: number;
@@ -156,7 +157,7 @@ export function Storage({ isAdmin }: { isAdmin: boolean }) {
                     ))}
                   </td>
                   <td>{formatBytes(v.size_bytes)}</td>
-                  <td>{new Date(v.created_at).toLocaleDateString()}</td>
+                  <td>{formatDate(v.created_at)}</td>
                   <td>
                     <span className={`pill pill-${deployed ? "production" : "inactive"}`}>
                       {deployed ? "deployed" : "inactive"}
@@ -199,10 +200,3 @@ export function Storage({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function formatBytes(b: number | null | undefined): string {
-  if (b == null) return "—";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { Star } from "lucide-react";
 import { SignIn, SignOutButton, useSession } from "./components/Auth";
 import { ToastProvider } from "./components/Toast";
 import { NotificationCenter } from "./components/NotificationCenter";
+import { Logo } from "./components/Logo";
 import { Overview } from "./sections/Overview";
 import { Train } from "./sections/Train";
 import { Models } from "./sections/Models";
@@ -55,8 +57,11 @@ function AppInner() {
       <header className="app-topbar" aria-label="Model registry navigation">
         <div className="topbar-inner">
           <div className="topbar-brand">
-            <p className="eyebrow">BSCP</p>
-            <h1>sack-train-ml</h1>
+            <Logo size={28} />
+            <div className="topbar-brand-text">
+              <p className="eyebrow">BSCP</p>
+              <h1>sack-train-ml</h1>
+            </div>
           </div>
           <nav className="topbar-nav">
             {SECTIONS.map((s) => (
@@ -82,7 +87,8 @@ function AppInner() {
             <div className="topbar-account-card">
               <code className="topbar-user">{email}</code>
               <span className={`role-badge ${isAdmin ? "admin" : "read"}`}>
-                {isAdmin ? "★ admin" : "authenticated"}
+                {isAdmin && <Star size={10} fill="currentColor" strokeWidth={0} />}
+                {isAdmin ? "admin" : "authenticated"}
               </span>
               <SignOutButton />
             </div>

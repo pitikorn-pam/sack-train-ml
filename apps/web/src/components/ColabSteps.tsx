@@ -3,6 +3,7 @@
  * Includes a copyable run ID card.
  */
 import { useState } from "react";
+import { ExternalLink, Copy, Check } from "lucide-react";
 
 interface Props {
   runId: string;
@@ -50,12 +51,16 @@ export function ColabSteps({ runId, colabUrl }: Props) {
     <div className="colab-steps">
       <div className="colab-actions">
         <a href={colabUrl} target="_blank" rel="noopener" className="button primary">
-          ▶ Open in Colab
+          <ExternalLink size={14} strokeWidth={2.5} />
+          Open in Colab
         </a>
         <div className="run-id-card">
           <span className="muted">Run ID</span>
           <code>{runId}</code>
-          <button onClick={copyId} className="link-button">{copied ? "Copied" : "Copy"}</button>
+          <button onClick={copyId} className="link-button" type="button" aria-label="Copy run id">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
         </div>
       </div>
 

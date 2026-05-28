@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { supabase, type ModelLine } from "../lib/supabase";
 import { parseYoloYaml } from "../lib/yaml";
 import { Hint } from "./Hint";
 import { ColabSteps } from "./ColabSteps";
+import { DatasetUploader } from "./DatasetUploader";
 import { useToast } from "./Toast";
 
 interface Hyperparams {
@@ -41,17 +43,31 @@ interface CreatedRun {
   colabUrl: string;
 }
 
-export function NewRun({ onCreated }: { onCreated: (id: string) => void }) {
+export function NewRun({
+  onCreated,
+  initialConfig,
+}: {
+  onCreated: (id: string) => void;
+  initialConfig?: Record<string, unknown> | null;
+}) {
+  const ic = (initialConfig ?? {}) as Record<string, any>;
   const [modelLines, setModelLines] = useState<ModelLine[]>([]);
   const [slug, setSlug] = useState("yolo11s-sack-hailo8l");
-  const [datasetKey, setDatasetKey] = useState("");
-  const [classes, setClasses] = useState<string[]>(["sack"]);
-  const [classText, setClassText] = useState("sack");
-  const [sourceWeights, setSourceWeights] = useState("yolo11s.pt");
-  const [imgsz, setImgsz] = useState(640);
-  const [hp, setHp] = useState<Hyperparams>(DEFAULT_HP);
-  const [hailoTarget, setHailoTarget] = useState("hailo8l");
-  const [note, setNote] = useState("");
+  const [datasetKey, setDatasetKey] = useState<string>(ic.dataset ?? "");
+  const [bundleKey, setBundleKey] = useState<string | null>(ic.dataset_bundle ?? null);
+  const [classes, setClasses] = useState<string[]>(ic.classes ?? ["sack"]);
+  const [classText, setClassText] = useState<string>((ic.classes ?? ["sack"]).join(", "));
+  const [sourceWeights, setSourceWeights] = useState<string>(ic.source_weights ?? "yolo11s.pt");
+  const [imgsz, setImgsz] = useState<number>(
+    Array.isArray(ic.input_size) && typeof ic.input_size[0] === "number" ? ic.input_size[0] : 640,
+  );
+  const [hp, setHp] = useState<Hyperparams>(
+    ic.hyperparameters ? { ...DEFAULT_HP, ...(ic.hyperparameters as Hyperparams) } : DEFAULT_HP,
+  );
+  const [hailoTarget, setHailoTarget] = useState<string>(
+    ic.export_options?.hailo_target ?? "hailo8l",
+  );
+  const [note, setNote] = useState<string>(ic.note ?? "");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [yamlParsed, setYamlParsed] = useState<{ filename: string; train?: string; val?: string } | null>(null);
@@ -70,21 +86,28 @@ export function NewRun({ onCreated }: { onCreated: (id: string) => void }) {
     setErrors((e) => ({ ...e, [field]: undefined }));
   }
 
-  async function onYamlFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const text = await f.text();
-    try {
-      const parsed = parseYoloYaml(text);
-      if (parsed.names.length > 0) {
-        setClasses(parsed.names);
-        setClassText(parsed.names.join(", "));
-      }
-      setYamlParsed({ filename: f.name, train: parsed.train, val: parsed.val });
+  function onUploaderChange(state: { yamlKey: string | null; bundleKey: string | null; yamlText: string | null }) {
+    if (state.yamlKey) {
+      setDatasetKey(state.yamlKey);
       clearError("dataset");
-      clearError("classes");
-    } catch (err) {
-      setErrors((p) => ({ ...p, dataset: `Failed to parse YAML: ${err}` }));
+    }
+    if (state.bundleKey !== null) setBundleKey(state.bundleKey);
+    if (state.yamlText) {
+      try {
+        const parsed = parseYoloYaml(state.yamlText);
+        if (parsed.names.length > 0) {
+          setClasses(parsed.names);
+          setClassText(parsed.names.join(", "));
+          clearError("classes");
+        }
+        setYamlParsed({
+          filename: state.yamlKey?.split("/").pop() ?? "dataset.yaml",
+          train: parsed.train,
+          val: parsed.val,
+        });
+      } catch {
+        // ignore — parsing is best-effort
+      }
     }
   }
 
@@ -125,6 +148,7 @@ export function NewRun({ onCreated }: { onCreated: (id: string) => void }) {
         output_kind: "detection-boxes",
         hyperparameters: { ...hp, imgsz },
         export_options: { hailo_target: hailoTarget },
+        ...(bundleKey ? { dataset_bundle: bundleKey } : {}),
         ...(note ? { note } : {}),
       };
       const { data, error } = await supabase.functions.invoke("start-training", {
@@ -149,7 +173,8 @@ export function NewRun({ onCreated }: { onCreated: (id: string) => void }) {
         <ColabSteps runId={created.runId} colabUrl={created.colabUrl} />
         <div className="created-actions">
           <button onClick={() => onCreated(created.runId)} className="button primary">
-            Watch live metrics →
+            Watch live metrics
+            <ChevronRight size={14} strokeWidth={2.5} />
           </button>
           <button onClick={() => setCreated(null)} className="button">
             Create another
@@ -179,30 +204,27 @@ export function NewRun({ onCreated }: { onCreated: (id: string) => void }) {
           {errors.modelLine && <span className="field-error">{errors.modelLine}</span>}
         </label>
 
-        <label>
-          Dataset (R2 key)
-          <Hint text="R2 path to the dataset YAML, e.g. datasets/yolo11s-sack-hailo8l/2026-05-26T10-30-00/dataset.yaml. Upload the YAML separately via the upload-dataset edge function to get a key." />
-          <input
-            type="text"
-            value={datasetKey}
-            onChange={(e) => { setDatasetKey(e.target.value); clearError("dataset"); }}
-            placeholder="datasets/yolo11s-sack-hailo8l/<stamp>/dataset.yaml"
-          />
-          {errors.dataset && <span className="field-error">{errors.dataset}</span>}
-        </label>
-
-        <label>
-          Parse YAML to auto-fill classes
-          <Hint text="Optional. Pick a local YOLO dataset YAML file — we'll extract the class list and dataset splits without uploading it." />
-          <input type="file" accept=".yaml,.yml" onChange={onYamlFile} />
+        <div>
+          <label>
+            Dataset
+            <Hint text="Upload the YOLO dataset YAML (required) and an optional image bundle ZIP. Both go to R2 via the upload-dataset edge function — you'll get an R2 key auto-filled below. The YAML is also parsed locally to auto-populate the class list." />
+          </label>
+          <DatasetUploader modelLineSlug={slug} onChange={onUploaderChange} />
+          {datasetKey && (
+            <span className="parsed-info">
+              YAML key: <code>{datasetKey}</code>
+              {bundleKey && <> · ZIP key: <code>{bundleKey}</code></>}
+            </span>
+          )}
           {yamlParsed && (
             <span className="parsed-info">
-              Parsed <code>{yamlParsed.filename}</code>
+              Parsed
               {yamlParsed.train && <> · train=<code>{yamlParsed.train}</code></>}
               {yamlParsed.val && <> · val=<code>{yamlParsed.val}</code></>}
             </span>
           )}
-        </label>
+          {errors.dataset && <span className="field-error">{errors.dataset}</span>}
+        </div>
 
         <label>
           Classes
