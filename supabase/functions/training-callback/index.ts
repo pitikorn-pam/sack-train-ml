@@ -73,15 +73,16 @@ serve(async (req) => {
 
   const rawBody = await req.text();
 
-  // Auth: either (a) Authorization Bearer == service_role key, or (b) HMAC signature.
-  // The Supabase gateway already requires a valid key to reach this function,
-  // so a service-role bearer is sufficient on its own — no HMAC needed.
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // Auth: either (a) caller presents a service-role JWT (Authorization or apikey
+  // header), or (b) HMAC signature. The Supabase gateway already requires a valid
+  // key to reach this function; a service-role JWT is strictly stronger than a
+  // shared HMAC secret, so accept it on its own.
   const authHeader = req.headers.get("authorization") ?? "";
+  const apikeyHeader = req.headers.get("apikey") ?? "";
   const bearer = authHeader.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7).trim()
-    : "";
-  const hasServiceRole = !!serviceRole && bearer === serviceRole;
+    : authHeader.trim();
+  const hasServiceRole = isServiceRoleJwt(bearer) || isServiceRoleJwt(apikeyHeader);
 
   if (!hasServiceRole) {
     const secret = Deno.env.get("TRAINING_CALLBACK_SECRET");
@@ -170,6 +171,20 @@ serve(async (req) => {
 
   return json({ error: "unknown_event_type" }, 400);
 });
+
+function isServiceRoleJwt(token: string): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = payload.length % 4 ? "=".repeat(4 - (payload.length % 4)) : "";
+    const decoded = JSON.parse(atob(payload + pad));
+    return decoded?.role === "service_role";
+  } catch {
+    return false;
+  }
+}
 
 async function verifySignature(body: string, header: string, secret: string): Promise<boolean> {
   const m = header.match(/^sha256=([0-9a-f]+)$/i);
