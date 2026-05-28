@@ -281,8 +281,8 @@ class RegistryClient:
             headers={
                 "Content-Type": "application/json",
                 "x-training-signature": f"sha256={sig}",
-                # apikey still required to pass the gateway, even though body auth is HMAC
                 "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
             },
         )
         # Retry once on transient 5xx
