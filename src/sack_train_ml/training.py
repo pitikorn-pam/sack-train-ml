@@ -28,6 +28,24 @@ DEFAULT_TRAIN_KWARGS: dict[str, Any] = {
 }
 
 
+def _coerce_batch(value: Any) -> Any:
+    """ultralytics no longer accepts ``batch="auto"``. Translate friendly
+    strings to its native auto-batch sentinel ``-1``; pass numerics through.
+    """
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("auto", "-1", ""):
+            return -1
+        try:
+            return int(v)
+        except ValueError:
+            try:
+                return float(v)
+            except ValueError:
+                return -1
+    return value
+
+
 def build_train_kwargs(
     config: RunConfig,
     dataset_yaml_path: str | Path,
@@ -39,6 +57,8 @@ def build_train_kwargs(
     kw["data"] = str(dataset_yaml_path)
     kw["project"] = str(project_dir)
     kw["name"] = run_name
+    if "batch" in kw:
+        kw["batch"] = _coerce_batch(kw["batch"])
     if isinstance(config.input_size, list) and len(config.input_size) >= 2:
         if config.input_size[0] == config.input_size[1]:
             kw["imgsz"] = config.input_size[0]
