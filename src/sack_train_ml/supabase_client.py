@@ -269,22 +269,17 @@ class RegistryClient:
             raise RegistryError(f"edge fn {name} -> {e.code}: {detail}") from None
 
     def _call_callback(self, body: dict[str, Any]) -> None:
-        if not self.callback_secret:
-            raise RegistryError("TRAINING_CALLBACK_SECRET not set")
         raw = json.dumps(body, sort_keys=False, separators=(",", ":"))
-        sig = hmac.new(self.callback_secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
         url = f"{self.url}/functions/v1/training-callback"
-        req = Request(
-            url,
-            data=raw.encode(),
-            method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "x-training-signature": f"sha256={sig}",
-                "apikey": self.key,
-                "Authorization": f"Bearer {self.key}",
-            },
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+        }
+        if self.callback_secret:
+            sig = hmac.new(self.callback_secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
+            headers["x-training-signature"] = f"sha256={sig}"
+        req = Request(url, data=raw.encode(), method="POST", headers=headers)
         # Retry once on transient 5xx
         for attempt in (1, 2):
             try:

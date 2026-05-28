@@ -71,14 +71,25 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const secret = Deno.env.get("TRAINING_CALLBACK_SECRET");
-  if (!secret) return json({ error: "callback_secret_not_configured" }, 500);
-
   const rawBody = await req.text();
-  const sigHeader = req.headers.get("x-training-signature") ?? "";
 
-  if (!(await verifySignature(rawBody, sigHeader, secret))) {
-    return json({ error: "invalid_signature" }, 401);
+  // Auth: either (a) Authorization Bearer == service_role key, or (b) HMAC signature.
+  // The Supabase gateway already requires a valid key to reach this function,
+  // so a service-role bearer is sufficient on its own — no HMAC needed.
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearer = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+  const hasServiceRole = !!serviceRole && bearer === serviceRole;
+
+  if (!hasServiceRole) {
+    const secret = Deno.env.get("TRAINING_CALLBACK_SECRET");
+    if (!secret) return json({ error: "callback_secret_not_configured" }, 500);
+    const sigHeader = req.headers.get("x-training-signature") ?? "";
+    if (!(await verifySignature(rawBody, sigHeader, secret))) {
+      return json({ error: "invalid_signature" }, 401);
+    }
   }
 
   let event: CallbackEvent;
