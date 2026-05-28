@@ -313,15 +313,21 @@ def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Pa
             _download(dataset_ref, local_yaml)
             client.log_step(run_id, 2, "dataset", "info",
                             f"pulled {dataset_ref} → {local_yaml}")
+            _normalize_dataset_yaml(local_yaml, extract_root, client, run_id)
             return local_yaml
 
+        local_yaml: Path | None = None
         for candidate in ("data.yaml", "dataset.yaml", "yolo.yaml"):
             p = extract_root / candidate
             if p.exists():
-                return p
-        raise FileNotFoundError(
-            f"no data.yaml inside bundle {bundle_ref} and no dataset YAML configured"
-        )
+                local_yaml = p
+                break
+        if local_yaml is None:
+            raise FileNotFoundError(
+                f"no data.yaml inside bundle {bundle_ref} and no dataset YAML configured"
+            )
+        _normalize_dataset_yaml(local_yaml, extract_root, client, run_id)
+        return local_yaml
 
     if dataset_ref and dataset_ref.startswith("datasets/"):
         local = REPO_ROOT / "data" / "remote" / Path(dataset_ref).name
@@ -330,6 +336,48 @@ def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Pa
         return local
 
     return Path(dataset_ref)
+
+
+def _normalize_dataset_yaml(
+    yaml_path: Path,
+    extract_root: Path,
+    client: RegistryClient,
+    run_id: str,
+) -> None:
+    """Roboflow YAMLs ship with ``train: ../train/images`` which resolves
+    outside the dataset root. Rewrite to absolute ``path`` + strip ``../``
+    prefixes so ultralytics sees the right folders.
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        client.log_step(run_id, 2, "dataset", "warn",
+                        "pyyaml not available, skipping yaml normalization")
+        return
+
+    try:
+        cfg = yaml.safe_load(yaml_path.read_text()) or {}
+    except Exception as e:
+        client.log_step(run_id, 2, "dataset", "warn",
+                        f"could not parse {yaml_path.name}: {e}")
+        return
+
+    changed = False
+    for key in ("train", "val", "test"):
+        v = cfg.get(key)
+        if isinstance(v, str) and v.startswith("../"):
+            cfg[key] = v.lstrip("./")
+            changed = True
+
+    abs_root = str(extract_root.resolve())
+    if cfg.get("path") != abs_root:
+        cfg["path"] = abs_root
+        changed = True
+
+    if changed:
+        yaml_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+        client.log_step(run_id, 2, "dataset", "info",
+                        f"normalized {yaml_path.name} · path={abs_root}")
 
 
 def _find_best_pt(save_dir: Path) -> Path:
