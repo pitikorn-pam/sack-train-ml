@@ -6,13 +6,14 @@ Reads a Supabase ``run_id``, pulls config, runs the pipeline:
     2. validate dataset
     3. train YOLO (streams metrics live)
     4. eval FP32
-    5. upload best.pt to R2
-    6. create versions row
-    7. finalize_run (succeeded | failed)
+    5. export ONNX
+    6. upload best.pt + best.onnx to R2
+    7. create versions row
+    8. finalize_run (succeeded | failed)
 
-ONNX export, HEF compile, INT8 eval and gate checks are intentionally
-out of scope here — they require Hailo SDK and run on a separate
-workstation as a downstream manual step.
+HEF compile, INT8 eval and gate checks are intentionally out of scope
+here — they require Hailo SDK and run on a separate workstation as a
+downstream manual step against the published .onnx artifact.
 
 Usage:
     python scripts/train_for_run.py --run-id <uuid>
@@ -41,6 +42,7 @@ if str(SRC_ROOT) not in sys.path:
 from sack_train_ml.contracts import ArtifactRecord, ReleaseManifest, sha256_file
 from sack_train_ml.dataset import validate_dataset
 from sack_train_ml.evaluation import normalize_metrics
+from sack_train_ml.export_onnx import export_onnx
 from sack_train_ml.release import assemble_bundle, build_manifest
 from sack_train_ml.supabase_client import RegistryClient
 from sack_train_ml.training import train_yolo
@@ -93,18 +95,26 @@ def main(argv: list[str] | None = None) -> int:
         client.log_step(run_id, 4, "eval-fp32", "ok",
                         f"FP32 mAP50={fp32_eval.get('map50'):.4f}" if "map50" in fp32_eval else "FP32 eval done")
 
-        # 5. Upload .pt artifact
-        # HEF / ONNX compilation is handled out-of-band on a Hailo-equipped
-        # workstation — sack-train-ml ships only the PyTorch weights.
-        client.log_step(run_id, 5, "upload", "started", "Uploading .pt to R2")
+        # 5. Export ONNX
+        client.log_step(run_id, 5, "export", "started", "ONNX export starting")
+        onnx_path = export_onnx(model, save_dir, imgsz=_imgsz(config))
+        client.log_step(run_id, 5, "export", "ok", f"ONNX → {onnx_path.name}")
+
+        # 6. Upload .pt + .onnx artifacts
+        # HEF compile (ONNX → INT8 .hef) is intentionally out-of-band — it
+        # needs the Hailo Dataflow Compiler on an x86_64 Linux workstation.
+        client.log_step(run_id, 6, "upload", "started", "Uploading artifacts to R2")
         semver = f"1.0.0-{run_id[:8]}"
         uploads: dict[str, ArtifactRecord] = {}
         u_pt = client.upload_artifact(best_pt, kind="pytorch", run_id=run_id, semver=semver,
                                       quantization={"precision": "fp32", "method": "none", "source": "best_weights"})
         uploads["pytorch"] = u_pt.to_record()
-        client.log_step(run_id, 5, "upload", "ok", f"Uploaded {best_pt.name}")
+        u_onnx = client.upload_artifact(onnx_path, kind="onnx", run_id=run_id, semver=semver)
+        uploads["onnx"] = u_onnx.to_record()
+        client.log_step(run_id, 6, "upload", "ok",
+                        f"Uploaded {best_pt.name} + {onnx_path.name}")
 
-        # 6. Build manifest + create version
+        # 7. Build manifest + create version
         manifest = build_manifest(
             version=semver,
             model_name=run_row.get("provider_job_id") or "yolo11s-sack",
@@ -123,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         bundle_dir = save_dir / "release"
         assemble_bundle(
             bundle_dir=bundle_dir,
-            artifacts={"pytorch": best_pt},
+            artifacts={"pytorch": best_pt, "onnx": onnx_path},
             eval_fp32=fp32_eval or None,
             eval_int8=None,
             manifest=manifest,
@@ -148,10 +158,10 @@ def main(argv: list[str] | None = None) -> int:
             size_bytes=sum(a.size_bytes for a in uploads.values()),
             content_hash=None,
         )
-        client.log_step(run_id, 7, "version", "ok",
+        client.log_step(run_id, 8, "version", "ok",
                         f"Version {version_row['semver']} created ({version_row['id']})")
 
-        # 8. Finalize
+        # 9. Finalize
         client.finalize_run(run_id, status="succeeded")
         return 0
 
@@ -303,6 +313,13 @@ def _normalize_dataset_yaml(
         yaml_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
         client.log_step(run_id, 2, "dataset", "info",
                         f"normalized {yaml_path.name} · path={abs_root}")
+
+
+def _imgsz(config) -> int:
+    s = getattr(config, "input_size", None)
+    if isinstance(s, list) and len(s) >= 1:
+        return int(s[0])
+    return 640
 
 
 def _find_best_pt(save_dir: Path) -> Path:
