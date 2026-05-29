@@ -49,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--device", default=None,
                    help="cuda, cpu, mps, or specific cuda id (default: auto)")
     p.add_argument("--out", default=None, help="Output directory (default predictions/<ts>)")
+    p.add_argument("--show", action="store_true",
+                   help="Display annotated frames live via OpenCV (press q to stop)")
+    p.add_argument("--no-save", action="store_true",
+                   help="Don't write annotated outputs to disk")
     args = p.parse_args(argv)
 
     model_path = _resolve_model(args)
@@ -72,27 +76,94 @@ def main(argv: list[str] | None = None) -> int:
     sources = _expand_input(input_path)
     print(f"→ {len(sources)} source(s) to process\n")
 
+    save = not args.no_save
     summary = []
     for src in sources:
-        results = model.predict(
-            source=str(src),
-            conf=args.conf,
-            iou=args.iou,
-            imgsz=args.imgsz,
-            device=args.device,
-            project=str(out_dir),
-            name=src.stem if src.is_file() else "batch",
-            save=True,
-            save_txt=False,
-            exist_ok=True,
-            verbose=False,
-        )
-        n_det = sum(int(r.boxes.shape[0]) for r in results if r.boxes is not None)
-        summary.append((src, n_det, len(results)))
-        print(f"  {src.name:<60s} → {n_det} detection(s) across {len(results)} frame(s)")
+        if args.show:
+            n_det, n_frames = _stream_predict(
+                model, src, out_dir, args.conf, args.iou, args.imgsz, args.device, save,
+            )
+        else:
+            results = model.predict(
+                source=str(src),
+                conf=args.conf,
+                iou=args.iou,
+                imgsz=args.imgsz,
+                device=args.device,
+                project=str(out_dir),
+                name=src.stem if src.is_file() else "batch",
+                save=save,
+                save_txt=False,
+                exist_ok=True,
+                stream=True,
+                verbose=False,
+            )
+            n_det = 0
+            n_frames = 0
+            for r in results:
+                if r.boxes is not None:
+                    n_det += int(r.boxes.shape[0])
+                n_frames += 1
+        summary.append((src, n_det, n_frames))
+        print(f"  {src.name:<60s} → {n_det} detection(s) across {n_frames} frame(s)")
 
-    print(f"\nannotated outputs saved under: {out_dir}")
+    if save:
+        print(f"\nannotated outputs saved under: {out_dir}")
     return 0
+
+
+def _stream_predict(model, src: Path, out_dir: Path, conf: float, iou: float,
+                    imgsz: int, device, save: bool) -> tuple[int, int]:
+    """Live OpenCV display loop. Returns (total_detections, n_frames)."""
+    try:
+        import cv2  # type: ignore
+    except ImportError:
+        raise SystemExit("--show requires opencv-python. install: pip install opencv-python")
+
+    name = src.stem if src.is_file() else "batch"
+    out_sub = out_dir / name
+    if save:
+        out_sub.mkdir(parents=True, exist_ok=True)
+
+    results = model.predict(
+        source=str(src),
+        conf=conf,
+        iou=iou,
+        imgsz=imgsz,
+        device=device,
+        stream=True,
+        verbose=False,
+    )
+
+    writer = None
+    n_det = 0
+    n_frames = 0
+    window = f"sack-train-ml · {src.name} (q to quit)"
+    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    for r in results:
+        frame = r.plot()  # BGR np.ndarray with boxes drawn
+        if r.boxes is not None:
+            n_det += int(r.boxes.shape[0])
+        n_frames += 1
+
+        if save:
+            if src.suffix.lower() in VIDEO_EXTS:
+                if writer is None:
+                    h, w = frame.shape[:2]
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    writer = cv2.VideoWriter(str(out_sub / f"{src.stem}.mp4"), fourcc, 25.0, (w, h))
+                writer.write(frame)
+            else:
+                cv2.imwrite(str(out_sub / f"frame_{n_frames:06d}.jpg"), frame)
+
+        cv2.imshow(window, frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    if writer:
+        writer.release()
+    cv2.destroyAllWindows()
+    return n_det, n_frames
 
 
 # ---------------------------------------------------------------------------
