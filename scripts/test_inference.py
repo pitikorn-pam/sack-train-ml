@@ -53,6 +53,14 @@ def main(argv: list[str] | None = None) -> int:
                    help="Display annotated frames live via OpenCV (press q to stop)")
     p.add_argument("--no-save", action="store_true",
                    help="Don't write annotated outputs to disk")
+    # line-crossing counter (video only)
+    p.add_argument("--count", action="store_true",
+                   help="Track + count when a sack crosses a line (video only)")
+    p.add_argument("--count-class", default="Sack",
+                   help="Class name to count (default 'Sack' — case sensitive)")
+    p.add_argument("--line", default="h:0.5",
+                   help="Counting line as 'h:<frac>' (horizontal at frac of height) "
+                        "or 'v:<frac>' (vertical at frac of width). Default 'h:0.5'")
     args = p.parse_args(argv)
 
     model_path = _resolve_model(args)
@@ -79,9 +87,13 @@ def main(argv: list[str] | None = None) -> int:
     save = not args.no_save
     summary = []
     for src in sources:
-        if args.show:
+        if args.count or args.show:
             n_det, n_frames = _stream_predict(
                 model, src, out_dir, args.conf, args.iou, args.imgsz, args.device, save,
+                show=args.show,
+                count=args.count,
+                count_class=args.count_class,
+                line_spec=args.line,
             )
         else:
             results = model.predict(
@@ -113,57 +125,148 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _stream_predict(model, src: Path, out_dir: Path, conf: float, iou: float,
-                    imgsz: int, device, save: bool) -> tuple[int, int]:
-    """Live OpenCV display loop. Returns (total_detections, n_frames)."""
+                    imgsz: int, device, save: bool,
+                    show: bool = False,
+                    count: bool = False,
+                    count_class: str = "Sack",
+                    line_spec: str = "h:0.5") -> tuple[int, int]:
+    """Live OpenCV loop. Optionally tracks + counts line crossings.
+    Returns (total_detections, n_frames)."""
     try:
         import cv2  # type: ignore
     except ImportError:
-        raise SystemExit("--show requires opencv-python. install: pip install opencv-python")
+        raise SystemExit("--show / --count requires opencv-python. install: pip install opencv-python")
 
     name = src.stem if src.is_file() else "batch"
     out_sub = out_dir / name
     if save:
         out_sub.mkdir(parents=True, exist_ok=True)
 
-    results = model.predict(
-        source=str(src),
-        conf=conf,
-        iou=iou,
-        imgsz=imgsz,
-        device=device,
-        stream=True,
-        verbose=False,
-    )
+    # Resolve class id for counting (model.names is {id: name})
+    target_class_id = None
+    class_names = getattr(model, "names", {}) or {}
+    if count:
+        for cid, nm in class_names.items():
+            if nm == count_class:
+                target_class_id = int(cid)
+                break
+        if target_class_id is None:
+            print(f"  ! count-class {count_class!r} not in model.names={list(class_names.values())}; "
+                  f"counting disabled")
+            count = False
+
+    # Use track mode (ByteTrack) when counting; predict otherwise
+    if count:
+        results = model.track(
+            source=str(src),
+            conf=conf, iou=iou, imgsz=imgsz, device=device,
+            stream=True, persist=True, tracker="bytetrack.yaml",
+            verbose=False,
+        )
+    else:
+        results = model.predict(
+            source=str(src),
+            conf=conf, iou=iou, imgsz=imgsz, device=device,
+            stream=True, verbose=False,
+        )
 
     writer = None
     n_det = 0
     n_frames = 0
-    window = f"sack-train-ml · {src.name} (q to quit)"
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+
+    # Line + counter state
+    orient, frac = _parse_line_spec(line_spec)
+    last_center: dict[int, tuple[float, float]] = {}
+    counted_ids: set[int] = set()
+    count_in = 0   # crossing "down" (h) or "right" (v)
+    count_out = 0  # crossing "up"   (h) or "left"  (v)
+
+    window = f"sack-train-ml · {src.name} (q to quit)" if show else None
+    if window:
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+
     for r in results:
         frame = r.plot()  # BGR np.ndarray with boxes drawn
+        h, w = frame.shape[:2]
+
         if r.boxes is not None:
             n_det += int(r.boxes.shape[0])
+
+        if count and r.boxes is not None and r.boxes.id is not None:
+            # axis position of the line in pixels
+            line_pos = int(round((h if orient == "h" else w) * frac))
+
+            xyxy = r.boxes.xyxy.cpu().numpy()
+            cls = r.boxes.cls.cpu().numpy().astype(int)
+            ids = r.boxes.id.cpu().numpy().astype(int)
+            for box, c, tid in zip(xyxy, cls, ids):
+                if c != target_class_id:
+                    continue
+                cx = float((box[0] + box[2]) * 0.5)
+                cy = float((box[1] + box[3]) * 0.5)
+                prev = last_center.get(tid)
+                last_center[tid] = (cx, cy)
+                if prev is None or tid in counted_ids:
+                    continue
+                prev_pos = prev[1] if orient == "h" else prev[0]
+                curr_pos = cy if orient == "h" else cx
+                if prev_pos < line_pos <= curr_pos:
+                    count_in += 1
+                    counted_ids.add(tid)
+                elif prev_pos > line_pos >= curr_pos:
+                    count_out += 1
+                    counted_ids.add(tid)
+
+            # draw line + counter
+            if orient == "h":
+                cv2.line(frame, (0, line_pos), (w, line_pos), (0, 255, 255), 2)
+            else:
+                cv2.line(frame, (line_pos, 0), (line_pos, h), (0, 255, 255), 2)
+            label = f"{count_class}  in:{count_in}  out:{count_out}  total:{count_in + count_out}"
+            cv2.rectangle(frame, (8, 8), (8 + 9 * len(label), 38), (0, 0, 0), -1)
+            cv2.putText(frame, label, (14, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                        (0, 255, 255), 2, cv2.LINE_AA)
+
         n_frames += 1
 
         if save:
             if src.suffix.lower() in VIDEO_EXTS:
                 if writer is None:
-                    h, w = frame.shape[:2]
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                     writer = cv2.VideoWriter(str(out_sub / f"{src.stem}.mp4"), fourcc, 25.0, (w, h))
                 writer.write(frame)
             else:
                 cv2.imwrite(str(out_sub / f"frame_{n_frames:06d}.jpg"), frame)
 
-        cv2.imshow(window, frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        if window:
+            cv2.imshow(window, frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
     if writer:
         writer.release()
-    cv2.destroyAllWindows()
+    if window:
+        cv2.destroyAllWindows()
+
+    if count:
+        print(f"  → counted {count_class}: in={count_in} out={count_out} total={count_in + count_out}")
     return n_det, n_frames
+
+
+def _parse_line_spec(spec: str) -> tuple[str, float]:
+    """'h:0.5' → ('h', 0.5).  Defaults to h:0.5 on parse failure."""
+    try:
+        orient, frac = spec.split(":")
+        orient = orient.strip().lower()
+        f = float(frac)
+        if orient not in ("h", "v"):
+            raise ValueError(f"orient must be h or v, got {orient!r}")
+        if not 0.0 < f < 1.0:
+            raise ValueError(f"frac must be in (0,1), got {f}")
+        return orient, f
+    except Exception as e:
+        print(f"  ! could not parse --line {spec!r} ({e}); using h:0.5")
+        return "h", 0.5
 
 
 # ---------------------------------------------------------------------------
