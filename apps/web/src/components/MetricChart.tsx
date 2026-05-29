@@ -29,7 +29,37 @@ const COLORS: Record<string, string> = {
   progress: "#22d3ee",
 };
 
-const DEFAULT_VISIBLE = new Set(["map50", "map50_95", "precision", "recall", "progress"]);
+// `progress` is shown as a percent bar above the chart, and `lr_*` lives on a
+// vastly different scale (1e-3). Both would crush the unit metrics if mixed in
+// on the same y-axis, so they start hidden and can be toggled on manually.
+const DEFAULT_VISIBLE = new Set(["map50", "map50_95", "precision", "recall", "f1"]);
+
+// Group label per metric so pills render in tidy clusters instead of one
+// 14-pill row where 0-1 metrics sit beside 0-100 ones.
+const METRIC_GROUP: Record<string, "quality" | "loss" | "lr" | "progress"> = {
+  map50: "quality",
+  map50_95: "quality",
+  precision: "quality",
+  recall: "quality",
+  f1: "quality",
+  box_loss: "loss",
+  cls_loss: "loss",
+  dfl_loss: "loss",
+  val_box_loss: "loss",
+  val_cls_loss: "loss",
+  val_dfl_loss: "loss",
+  lr_pg0: "lr",
+  lr_pg1: "lr",
+  lr_pg2: "lr",
+  progress: "progress",
+};
+
+const GROUP_LABELS: Record<string, string> = {
+  quality: "Quality (0–1)",
+  loss: "Losses",
+  lr: "Learning rate",
+  progress: "Progress (0–100)",
+};
 
 const WIDTH = 720;
 const HEIGHT = 220;
@@ -166,21 +196,32 @@ export function MetricChart({ metrics }: { metrics: RunMetric[] }) {
   return (
     <div className="metric-chart">
       <div className="metric-toolbar">
-        <div className="metric-pills">
-          {allNames.map((name) => (
-            <button
-              key={name}
-              className={`metric-pill${visible.has(name) ? " active" : ""}`}
-              onClick={() => toggleMetric(name)}
-              style={visible.has(name) ? { borderColor: COLORS[name] ?? "#94a3b8" } : undefined}
-            >
-              <span className="metric-pill-dot" style={{ background: COLORS[name] ?? "#94a3b8" }} />
-              {name}
-              {grouped[name] && (
-                <span className="muted">{grouped[name][grouped[name].length - 1].value.toFixed(3)}</span>
-              )}
-            </button>
-          ))}
+        <div className="metric-pill-groups">
+          {(["quality", "loss", "lr", "progress"] as const).map((group) => {
+            const names = allNames.filter((n) => (METRIC_GROUP[n] ?? "quality") === group);
+            if (names.length === 0) return null;
+            return (
+              <div key={group} className="metric-pill-group">
+                <span className="metric-pill-group-label muted">{GROUP_LABELS[group]}</span>
+                <div className="metric-pills">
+                  {names.map((name) => (
+                    <button
+                      key={name}
+                      className={`metric-pill${visible.has(name) ? " active" : ""}`}
+                      onClick={() => toggleMetric(name)}
+                      style={visible.has(name) ? { borderColor: COLORS[name] ?? "#94a3b8" } : undefined}
+                    >
+                      <span className="metric-pill-dot" style={{ background: COLORS[name] ?? "#94a3b8" }} />
+                      {name}
+                      {grouped[name] && (
+                        <span className="muted">{grouped[name][grouped[name].length - 1].value.toFixed(3)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div className="metric-actions">
           <label className="metric-checkbox">

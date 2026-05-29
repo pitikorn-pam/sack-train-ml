@@ -603,6 +603,9 @@ details[open] summary { margin-bottom: var(--space-sm); }
   display: flex; justify-content: space-between; gap: var(--space-sm);
   flex-wrap: wrap; align-items: center;
 }
+.metric-pill-groups { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+.metric-pill-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.metric-pill-group-label { font-size: var(--fs-caption); min-width: 110px; }
 .metric-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .metric-pill {
   display: inline-flex; align-items: center; gap: 6px;
