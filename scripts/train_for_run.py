@@ -380,6 +380,35 @@ def _normalize_dataset_yaml(
                         f"normalized {yaml_path.name} · path={abs_root}")
 
 
+def _resolve_calibration(config: Any, dataset_yaml: Path) -> Path:
+    """Build a calibration image manifest (one absolute path per line).
+
+    Prefers the val split — small, representative, and already on disk after
+    the dataset bundle is extracted. Caps to 200 images so hailomz quant
+    stays under a few minutes.
+    """
+    cap = 200
+    try:
+        import yaml  # type: ignore
+        cfg = yaml.safe_load(dataset_yaml.read_text()) or {}
+    except Exception:
+        cfg = {}
+    root = Path(cfg.get("path") or dataset_yaml.parent)
+    split = cfg.get("val") or cfg.get("train") or "images/val"
+    if isinstance(split, list):
+        split = split[0]
+    images_dir = (root / split).resolve()
+
+    exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    images = [p for p in images_dir.iterdir() if p.suffix.lower() in exts] if images_dir.is_dir() else []
+    images.sort()
+    images = images[:cap]
+
+    manifest = dataset_yaml.parent / "_calib_manifest.txt"
+    manifest.write_text("\n".join(str(p) for p in images) + "\n")
+    return manifest
+
+
 def _find_best_pt(save_dir: Path) -> Path:
     candidates = [
         save_dir / "weights" / "best.pt",
