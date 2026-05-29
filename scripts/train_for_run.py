@@ -1,27 +1,24 @@
 """train_for_run.py — main entrypoint called by the Colab notebook.
 
-Reads a Supabase ``run_id``, pulls config, runs the full pipeline:
+Reads a Supabase ``run_id``, pulls config, runs the pipeline:
 
     1. log_step started
     2. validate dataset
     3. train YOLO (streams metrics live)
     4. eval FP32
-    5. export ONNX
-    6. compile HEF + write hef.meta.yaml  (Hailo SDK required)
-    7. eval INT8 via HEF                  (Hailo runtime required)
-    8. gate check (FP32 vs INT8)
-    9. upload artifacts (pytorch, onnx, hef, hef_meta) to R2
-   10. create versions row
-   11. finalize_run (succeeded | failed)
+    5. upload best.pt to R2
+    6. create versions row
+    7. finalize_run (succeeded | failed)
+
+ONNX export, HEF compile, INT8 eval and gate checks are intentionally
+out of scope here — they require Hailo SDK and run on a separate
+workstation as a downstream manual step.
 
 Usage:
     python scripts/train_for_run.py --run-id <uuid>
 
 Env required:
-    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TRAINING_CALLBACK_SECRET
-
-Optional:
-    HAILO_SDK_ROOT, HAILO_MZ_BIN (defaults to ``hailomz`` on PATH)
+    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 """
 
 from __future__ import annotations
@@ -43,9 +40,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from sack_train_ml.contracts import ArtifactRecord, ReleaseManifest, sha256_file
 from sack_train_ml.dataset import validate_dataset
-from sack_train_ml.evaluation import gate_check, normalize_metrics
-from sack_train_ml.export_onnx import export_onnx
-from sack_train_ml.hailo_pipeline import compile_hef
+from sack_train_ml.evaluation import normalize_metrics
 from sack_train_ml.release import assemble_bundle, build_manifest
 from sack_train_ml.supabase_client import RegistryClient
 from sack_train_ml.training import train_yolo
@@ -55,8 +50,6 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-id", required=True)
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--skip-hef", action="store_true",
-                   help="Skip HEF compile + INT8 eval (useful when Hailo SDK isn't installed)")
     args = p.parse_args(argv)
 
     run_id = args.run_id
@@ -100,77 +93,18 @@ def main(argv: list[str] | None = None) -> int:
         client.log_step(run_id, 4, "eval-fp32", "ok",
                         f"FP32 mAP50={fp32_eval.get('map50'):.4f}" if "map50" in fp32_eval else "FP32 eval done")
 
-        # 5. Export ONNX
-        client.log_step(run_id, 5, "export", "started", "ONNX export starting")
-        onnx_path = export_onnx(model, save_dir, imgsz=_imgsz(config))
-        client.log_step(run_id, 5, "export", "ok", f"ONNX → {onnx_path.name}")
-
-        # 6. Compile HEF
-        hef_path: Path | None = None
-        hef_meta_path: Path | None = None
-        hef_quant: dict[str, Any] | None = None
-        if not args.skip_hef:
-            client.log_step(run_id, 6, "hef-compile", "started", "Hailo HEF compile starting")
-            calib = _resolve_calibration(config, dataset_yaml)
-            try:
-                hef = compile_hef(
-                    onnx_path=onnx_path,
-                    calibration_manifest=calib,
-                    out_dir=save_dir,
-                    model_name=run_row.get("model_line_id", "model")[:8] + "-hef",
-                    target=config.export_options.get("hailo_target", "hailo8l"),
-                    input_shape=_input_shape_tuple(config),
-                    hailomz_bin=os.environ.get("HAILO_MZ_BIN", "hailomz"),
-                )
-                hef_path = hef.hef_path
-                hef_meta_path = hef.hef_meta_path
-                hef_quant = hef.quantization
-                client.log_step(run_id, 6, "hef-compile", "ok", f"HEF → {hef_path.name}")
-            except Exception as exc:
-                client.log_step(run_id, 6, "hef-compile", "warning", f"HEF compile failed: {exc}")
-
-        # 7. INT8 eval (best-effort; skip if HEF missing or no runtime)
-        int8_eval: dict[str, Any] = {}
-        if hef_path:
-            try:
-                int8_eval = _eval_int8(hef_path, dataset_yaml)
-            except Exception as exc:
-                client.log_step(run_id, 7, "eval-int8", "warning", f"INT8 eval skipped: {exc}")
-
-        # 8. Gate
-        if fp32_eval and int8_eval:
-            verdict = gate_check(fp32_eval, int8_eval).to_dict()
-            client.log_step(run_id, 8, "gate", "ok" if verdict["passed"] else "warning",
-                            f"gate: {verdict['reason']}")
-        else:
-            verdict = {"passed": None, "reason": "skipped (incomplete eval)"}
-
-        # 9. Upload artifacts
-        client.log_step(run_id, 9, "upload", "started", "Uploading artifacts to R2")
+        # 5. Upload .pt artifact
+        # HEF / ONNX compilation is handled out-of-band on a Hailo-equipped
+        # workstation — sack-train-ml ships only the PyTorch weights.
+        client.log_step(run_id, 5, "upload", "started", "Uploading .pt to R2")
         semver = f"1.0.0-{run_id[:8]}"
         uploads: dict[str, ArtifactRecord] = {}
-
         u_pt = client.upload_artifact(best_pt, kind="pytorch", run_id=run_id, semver=semver,
                                       quantization={"precision": "fp32", "method": "none", "source": "best_weights"})
         uploads["pytorch"] = u_pt.to_record()
+        client.log_step(run_id, 5, "upload", "ok", f"Uploaded {best_pt.name}")
 
-        u_onnx = client.upload_artifact(onnx_path, kind="onnx", run_id=run_id, semver=semver)
-        uploads["onnx"] = u_onnx.to_record()
-
-        if hef_path:
-            u_hef = client.upload_artifact(hef_path, kind="hef", run_id=run_id, semver=semver,
-                                           quantization=hef_quant)
-            uploads["hef"] = u_hef.to_record()
-
-        if hef_meta_path:
-            u_meta = client.upload_artifact(hef_meta_path, kind="hef_meta",
-                                            run_id=run_id, semver=semver,
-                                            content_type="application/x-yaml")
-            uploads["hef_meta"] = u_meta.to_record()
-
-        client.log_step(run_id, 9, "upload", "ok", f"Uploaded {len(uploads)} artifacts")
-
-        # 10. Build manifest + create version
+        # 6. Build manifest + create version
         manifest = build_manifest(
             version=semver,
             model_name=run_row.get("provider_job_id") or "yolo11s-sack",
@@ -179,8 +113,6 @@ def main(argv: list[str] | None = None) -> int:
             uploaded=uploads,
             metrics_summary={
                 "fp32": normalize_metrics(fp32_eval) if fp32_eval else {},
-                "int8": normalize_metrics(int8_eval) if int8_eval else {},
-                "gate": verdict,
             },
             class_names=config.classes,
             input_size=config.input_size,
@@ -191,16 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         bundle_dir = save_dir / "release"
         assemble_bundle(
             bundle_dir=bundle_dir,
-            artifacts={
-                k: (best_pt if k == "pytorch" else
-                    onnx_path if k == "onnx" else
-                    hef_path if k == "hef" else
-                    hef_meta_path)
-                for k in uploads.keys()
-                if (k != "hef" or hef_path) and (k != "hef_meta" or hef_meta_path)
-            },
+            artifacts={"pytorch": best_pt},
             eval_fp32=fp32_eval or None,
-            eval_int8=int8_eval or None,
+            eval_int8=None,
             manifest=manifest,
         )
 
@@ -223,10 +148,10 @@ def main(argv: list[str] | None = None) -> int:
             size_bytes=sum(a.size_bytes for a in uploads.values()),
             content_hash=None,
         )
-        client.log_step(run_id, 10, "version", "ok",
+        client.log_step(run_id, 7, "version", "ok",
                         f"Version {version_row['semver']} created ({version_row['id']})")
 
-        # 11. Finalize
+        # 8. Finalize
         client.finalize_run(run_id, status="succeeded")
         return 0
 
@@ -380,35 +305,6 @@ def _normalize_dataset_yaml(
                         f"normalized {yaml_path.name} · path={abs_root}")
 
 
-def _resolve_calibration(config: Any, dataset_yaml: Path) -> Path:
-    """Build a calibration image manifest (one absolute path per line).
-
-    Prefers the val split — small, representative, and already on disk after
-    the dataset bundle is extracted. Caps to 200 images so hailomz quant
-    stays under a few minutes.
-    """
-    cap = 200
-    try:
-        import yaml  # type: ignore
-        cfg = yaml.safe_load(dataset_yaml.read_text()) or {}
-    except Exception:
-        cfg = {}
-    root = Path(cfg.get("path") or dataset_yaml.parent)
-    split = cfg.get("val") or cfg.get("train") or "images/val"
-    if isinstance(split, list):
-        split = split[0]
-    images_dir = (root / split).resolve()
-
-    exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-    images = [p for p in images_dir.iterdir() if p.suffix.lower() in exts] if images_dir.is_dir() else []
-    images.sort()
-    images = images[:cap]
-
-    manifest = dataset_yaml.parent / "_calib_manifest.txt"
-    manifest.write_text("\n".join(str(p) for p in images) + "\n")
-    return manifest
-
-
 def _find_best_pt(save_dir: Path) -> Path:
     candidates = [
         save_dir / "weights" / "best.pt",
@@ -434,28 +330,6 @@ def _eval_fp32(model: Any) -> dict[str, Any]:
         return out
     except Exception:
         return {}
-
-
-def _eval_int8(hef_path: Path, dataset_yaml: Path) -> dict[str, Any]:
-    # Stub: real INT8 eval needs Hailo runtime + a HEF inference harness.
-    # Phase 1 leaves this as a hook; Phase 2 wires it.
-    return {}
-
-
-def _imgsz(config) -> int:
-    if isinstance(config.input_size, list) and len(config.input_size) >= 1:
-        return int(config.input_size[0])
-    return 640
-
-
-def _input_shape_tuple(config) -> tuple[int, int, int]:
-    s = config.input_size
-    if isinstance(s, list):
-        if len(s) >= 3:
-            return (int(s[0]), int(s[1]), int(s[2]))
-        if len(s) == 2:
-            return (int(s[0]), int(s[1]), 3)
-    return (640, 640, 3)
 
 
 if __name__ == "__main__":

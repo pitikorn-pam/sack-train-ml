@@ -33,7 +33,7 @@ const STEPS = [
   },
   {
     title: "Pickup the release bundle",
-    body: "On success, a new version row appears under Models. Artifacts (.pt, .onnx, .hef) are on R2.",
+    body: "On success, a new version row appears under Models with the trained best.pt on R2. ONNX/HEF compile is a separate manual step on a Hailo-equipped workstation.",
   },
 ];
 

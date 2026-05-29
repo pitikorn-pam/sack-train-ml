@@ -183,7 +183,7 @@ export function Storage({ isAdmin }: { isAdmin: boolean }) {
       <ConfirmModal
         open={!!confirm}
         title={`Delete v${confirm?.semver}`}
-        message={`This permanently deletes the version row + all R2 artifact objects (.pt, .onnx, .hef, .hef.meta.yaml). Edge devices currently using this version will keep their local copy; new resolves stop returning it.`}
+        message={`This permanently deletes the version row + all attached R2 artifact objects. Edge devices currently using this version will keep their local copy; new resolves stop returning it.`}
         confirmLabel="Delete forever"
         danger
         onConfirm={deleteVersion}
