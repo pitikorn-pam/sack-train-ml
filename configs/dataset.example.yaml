@@ -1,6 +1,8 @@
 path: ./data/datasets/sack-v1
 train: images/train
 val: images/val
+# Class order is CONTRACT-CRITICAL: must match the edge runtime (hailo_backend
+# class map {0:person, 1:sack}) and Roboflow export order. Do NOT swap.
 names:
-  0: sack
-  1: person
+  0: person
+  1: sack

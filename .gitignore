@@ -21,3 +21,6 @@ coverage/
 .vite.log
 manual/
 **/.vite.log
+
+# Local prediction outputs (model weights + render dumps, ~550MB, not source)
+predictions/
