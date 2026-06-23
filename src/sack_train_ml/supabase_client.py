@@ -28,9 +28,41 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from .contracts import ArtifactRecord, RunConfig, sha256_file
+
+
+# Transient upstream failures (Cloudflare R2 / Supabase gateway) surface as 5xx
+# or a dropped connection. The artifact PUT is idempotent (same presigned key),
+# so retrying with backoff is safe and avoids losing a whole training run to a
+# momentary 502 Bad Gateway. See train_for_run.py step 6.
+_RETRY_STATUSES = {500, 502, 503, 504}
+
+
+def _put_with_retry(req: Request, attempts: int = 5, base_delay: float = 2.0) -> int:
+    """PUT via urlopen, retrying on transient 5xx / connection errors.
+
+    Returns the final HTTP status. Raises on a non-retryable error or after the
+    last attempt.
+    """
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            with urlopen(req, timeout=120) as r:
+                return r.status
+        except HTTPError as e:
+            if e.code not in _RETRY_STATUSES or i == attempts - 1:
+                raise
+            last_exc = e
+        except URLError as e:  # dropped connection / DNS blip — retry
+            if i == attempts - 1:
+                raise
+            last_exc = e
+        time.sleep(base_delay * (i + 1))
+    if last_exc:  # pragma: no cover - defensive
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 # ----------------------------------------------------------------------------
@@ -176,9 +208,9 @@ class RegistryClient:
             req.add_header("Content-Type", content_type)
         else:
             req.add_header("Content-Type", "application/octet-stream")
-        with urlopen(req) as r:
-            if r.status not in (200, 201, 204):
-                raise RegistryError(f"R2 PUT failed status={r.status}")
+        status = _put_with_retry(req)
+        if status not in (200, 201, 204):
+            raise RegistryError(f"R2 PUT failed status={status}")
 
         return UploadedArtifact(
             kind=kind,
