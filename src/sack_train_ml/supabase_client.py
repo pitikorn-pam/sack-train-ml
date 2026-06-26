@@ -225,6 +225,15 @@ class RegistryClient:
         resp = self._call_edge("download-dataset", {"r2_key": r2_key})
         return resp["download_url"]
 
+    def download_tool(self, r2_key: str) -> str:
+        """Return a presigned R2 GET URL (15 min TTL) for a staged tool asset.
+
+        ``r2_key`` must live under the private ``tools/`` prefix (e.g. the gated
+        Hailo DFC wheel ``tools/hailo/hailo_dataflow_compiler-*.whl``).
+        """
+        resp = self._call_edge("download-tool", {"r2_key": r2_key})
+        return resp["download_url"]
+
     # ---- versions ------------------------------------------------------------
 
     def create_version(

@@ -8,12 +8,16 @@ Reads a Supabase ``run_id``, pulls config, runs the pipeline:
     4. eval FP32
     5. export ONNX
     6. upload best.pt + best.onnx to R2
-    7. create versions row
+    6b. (optional) compile INT8 .hef + upload — when ``compile_options.compile_hef``
+        is set. Runs in the same Colab session via a dedicated DFC virtualenv
+        subprocess (see sack_train_ml.hailo_pipeline). Failure-safe: if the
+        compile fails the .pt/.onnx artifacts are still published.
+    7. create versions row (with whatever artifacts succeeded)
     8. finalize_run (succeeded | failed)
 
-HEF compile, INT8 eval and gate checks are intentionally out of scope
-here — they require Hailo SDK and run on a separate workstation as a
-downstream manual step against the published .onnx artifact.
+INT8 eval and gate checks against event-GT remain a downstream step — the
+in-flow compile produces a basic-quant (opt_level 0) HEF by default, which
+proves the pipeline/version. Production quant wants calib>=1024 + opt_level 2.
 
 Usage:
     python scripts/train_for_run.py --run-id <uuid>
@@ -52,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-id", required=True)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--skip-hef", action="store_true",
+                   help="force-skip the in-flow HEF compile even if compile_options.compile_hef is set")
     args = p.parse_args(argv)
 
     run_id = args.run_id
@@ -113,6 +119,19 @@ def main(argv: list[str] | None = None) -> int:
         uploads["onnx"] = u_onnx.to_record()
         client.log_step(run_id, 6, "upload", "ok",
                         f"Uploaded {best_pt.name} + {onnx_path.name}")
+
+        # 6b. Optional: compile INT8 .hef in-session (gated by compile_options).
+        # Failure-safe — a compile failure logs a warning but the .pt/.onnx
+        # artifacts above are still published into the version below.
+        if args.skip_hef:
+            client.log_step(run_id, 7, "compile", "info", "HEF compile skipped (--skip-hef)")
+        else:
+            _maybe_compile_hef(
+                config=config, client=client, run_id=run_id, semver=semver,
+                onnx_path=onnx_path, onnx_sha=u_onnx.content_hash,
+                dataset_yaml=dataset_yaml, save_dir=save_dir, git_sha=git_sha,
+                uploads=uploads,
+            )
 
         # 7. Build manifest + create version
         manifest = build_manifest(
@@ -193,6 +212,101 @@ def _current_git_sha(root: Path) -> str | None:
         return out.stdout.strip()
     except Exception:
         return None
+
+
+def _download_url(url: str, dest: Path) -> None:
+    from urllib.request import urlopen
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with urlopen(url, timeout=300) as r, open(dest, "wb") as f:
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                break
+            f.write(chunk)
+
+
+def _maybe_compile_hef(
+    *,
+    config: Any,
+    client: RegistryClient,
+    run_id: str,
+    semver: str,
+    onnx_path: Path,
+    onnx_sha: str,
+    dataset_yaml: Path,
+    save_dir: Path,
+    git_sha: str | None,
+    uploads: dict[str, ArtifactRecord],
+) -> None:
+    """Optional in-flow HEF compile (step 6b). No-op unless ``compile_hef`` set.
+
+    Runs the DFC ClientRunner recipe inside a dedicated venv subprocess. On
+    success appends ``hef`` + ``hef_meta`` to ``uploads`` so they land in the
+    same version row. On any failure, logs a warning and returns — the .pt/.onnx
+    artifacts already in ``uploads`` are still published.
+    """
+    copts = getattr(config, "compile_options", {}) or {}
+    if not copts.get("compile_hef"):
+        return
+
+    try:
+        from sack_train_ml.hailo_pipeline import (
+            build_calib_dir,
+            compile_onnx_to_hef,
+            ensure_dfc_venv,
+        )
+
+        client.log_step(run_id, 7, "compile", "started", "HEF compile (DFC ClientRunner) starting")
+
+        wheel_key = copts.get("wheel_key")
+        if not wheel_key:
+            raise ValueError("compile_options.wheel_key (R2 DFC wheel) is required when compile_hef=true")
+        wheel_local = REPO_ROOT / "tools" / Path(wheel_key).name
+        if not wheel_local.exists():
+            _download_url(client.download_tool(wheel_key), wheel_local)
+            client.log_step(run_id, 7, "compile", "info", f"DFC wheel pulled · {wheel_local.name}")
+        venv_py = ensure_dfc_venv(wheel_local, copts.get("venv_dir", "/content/hailo_venv"))
+
+        calib_n = int(copts.get("calib_n", 512))
+        calib_dir = build_calib_dir(dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=calib_n)
+
+        size = _imgsz(config)
+        net_name = copts.get("net_name", "yolov11s_sack")
+        art = compile_onnx_to_hef(
+            onnx_path=onnx_path,
+            calib_dir=calib_dir,
+            out_dir=save_dir / "hef",
+            model_name=net_name,
+            venv_python=venv_py,
+            target=(config.export_options or {}).get("hailo_target", "hailo8l"),
+            input_size=size,
+            classes=len(config.classes),
+            calib_n=calib_n,
+            opt_level=int(copts.get("opt_level", 0)),
+            scores_th=float(copts.get("scores_th", 0.20)),
+            iou_th=float(copts.get("iou_th", 0.70)),
+            max_per_class=int(copts.get("max_per_class", 50)),
+            reg_len=int(copts.get("reg_len", 16)),
+            source_onnx_sha=onnx_sha,
+            git_sha=git_sha,
+            extra_meta={"run_id": run_id, "semver": semver, "class_names": config.classes},
+        )
+
+        u_hef = client.upload_artifact(art.hef_path, kind="hef", run_id=run_id, semver=semver,
+                                       quantization=art.quantization)
+        uploads["hef"] = u_hef.to_record()
+        u_meta = client.upload_artifact(art.hef_meta_path, kind="hef_meta", run_id=run_id, semver=semver)
+        uploads["hef_meta"] = u_meta.to_record()
+        client.log_step(run_id, 7, "compile", "ok",
+                        f"HEF compiled + uploaded · {art.hef_path.name} (opt_level={copts.get('opt_level', 0)})")
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        try:
+            client.log_step(run_id, 7, "compile", "warn",
+                            f"HEF compile skipped/failed: {type(exc).__name__}: {exc} — .pt/.onnx still published")
+        except Exception:
+            pass
 
 
 def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Path:

@@ -44,6 +44,14 @@ class RunConfig:
     # Optional ---------------------------------------------------------------
     hyperparameters: dict[str, Any] = field(default_factory=dict)
     export_options: dict[str, Any] = field(default_factory=dict)
+    # When ``compile_hef`` is true the training run also compiles an INT8 .hef
+    # in the same Colab session (see hailo_pipeline). Keys:
+    #   compile_hef: bool          — enable the HEF compile phase
+    #   opt_level:   int (0|2)     — 0 = fast/basic (proven); 2 = production (calib>=1024)
+    #   calib_n:     int           — # calibration images sampled from the dataset
+    #   wheel_key:   str           — R2 key for the gated DFC wheel (tools/...)
+    #   scores_th / iou_th / max_per_class / reg_len — NMS contract overrides
+    compile_options: dict[str, Any] = field(default_factory=dict)
     dataset_bundle: str | None = None
     dataset_stats: dict[str, Any] = field(default_factory=dict)
     logs: list[dict[str, Any]] = field(default_factory=list)
@@ -63,6 +71,7 @@ class RunConfig:
             output_kind=d["output_kind"],
             hyperparameters=dict(d.get("hyperparameters", {})),
             export_options=dict(d.get("export_options", {})),
+            compile_options=dict(d.get("compile_options", {})),
             dataset_bundle=d.get("dataset_bundle"),
             dataset_stats=dict(d.get("dataset_stats", {})),
             logs=list(d.get("logs", [])),

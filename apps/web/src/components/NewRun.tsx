@@ -67,6 +67,14 @@ export function NewRun({
   const [hailoTarget, setHailoTarget] = useState<string>(
     ic.export_options?.hailo_target ?? "hailo8l",
   );
+  // HEF compile (step 6b): compile an INT8 .hef in the same Colab run.
+  const [compileHef, setCompileHef] = useState<boolean>(ic.compile_options?.compile_hef ?? false);
+  const [optLevel, setOptLevel] = useState<number>(ic.compile_options?.opt_level ?? 0);
+  const [calibN, setCalibN] = useState<number>(ic.compile_options?.calib_n ?? 512);
+  const [wheelKey, setWheelKey] = useState<string>(
+    ic.compile_options?.wheel_key ??
+      "tools/hailo/hailo_dataflow_compiler-3.33.1-py3-none-linux_x86_64.whl",
+  );
   const [note, setNote] = useState<string>(ic.note ?? "");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -148,6 +156,16 @@ export function NewRun({
         output_kind: "detection-boxes",
         hyperparameters: { ...hp, imgsz },
         export_options: { hailo_target: hailoTarget },
+        ...(compileHef
+          ? {
+              compile_options: {
+                compile_hef: true,
+                opt_level: optLevel,
+                calib_n: calibN,
+                wheel_key: wheelKey,
+              },
+            }
+          : {}),
         ...(bundleKey ? { dataset_bundle: bundleKey } : {}),
         ...(note ? { note } : {}),
       };
@@ -276,6 +294,51 @@ export function NewRun({
               <option value="hailo15">hailo15</option>
             </select>
           </label>
+        </div>
+
+        <div className="field-block">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={compileHef}
+              onChange={(e) => setCompileHef(e.target.checked)}
+            />
+            <span>Compile HEF after training</span>
+            <Hint text="When on, the same Colab run compiles an INT8 .hef for the Hailo target right after ONNX export (step 6b), so one run emits .pt + .onnx + .hef. Calibration images are sampled from the uploaded dataset. The compile is failure-safe — if it fails, .pt/.onnx are still published." />
+          </label>
+          {compileHef && (
+            <div className="field-row">
+              <label>
+                Quant level
+                <Hint text="0 = fast / basic quant (proven, dodges the DFC Layer-Noise-Analysis bug) — good for a pipeline/version proof. 2 = production quant (Simple LAT + bias correction), needs calib ≥ 1024 images." />
+                <select value={optLevel} onChange={(e) => setOptLevel(Number(e.target.value))}>
+                  <option value={0}>0 — fast / basic (proof)</option>
+                  <option value={2}>2 — production (calib ≥ 1024)</option>
+                </select>
+              </label>
+              <label>
+                Calib images
+                <Hint text="How many images to sample from the dataset for INT8 calibration. 256–512 for a proof; ≥1024 for production quant (opt_level 2)." />
+                <input
+                  type="number"
+                  min="256"
+                  step="64"
+                  value={calibN}
+                  onChange={(e) => setCalibN(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                DFC wheel (R2)
+                <Hint text="R2 key of the staged Hailo Dataflow Compiler wheel under the private tools/ prefix. The gated vendor wheel must be uploaded once before the first compile run." />
+                <input
+                  type="text"
+                  value={wheelKey}
+                  onChange={(e) => setWheelKey(e.target.value)}
+                  placeholder="tools/hailo/hailo_dataflow_compiler-3.33.1-...whl"
+                />
+              </label>
+            </div>
+          )}
         </div>
 
         <details open={showAdvanced} onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}>
