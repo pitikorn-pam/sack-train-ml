@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, XCircle, RotateCcw } from "lucide-react";
+import { ChevronLeft, XCircle, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { supabase, type Run, type RunMetric } from "../lib/supabase";
 import { MetricChart } from "./MetricChart";
 import { ColabSteps } from "./ColabSteps";
@@ -22,6 +22,7 @@ export function RunDetail({
   const [run, setRun] = useState<Run | null>(null);
   const [metrics, setMetrics] = useState<RunMetric[]>([]);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const { push } = useToast();
 
   async function cancelRun() {
@@ -32,6 +33,23 @@ export function RunDetail({
       .eq("id", runId);
     if (error) push({ tone: "danger", title: "Cancel failed", detail: error.message });
     else push({ tone: "info", title: "Run cancelled", detail: runId.slice(0, 8) });
+  }
+
+  async function deleteRun() {
+    setDeleteOpen(false);
+    const { error } = await supabase.from("runs").delete().eq("id", runId);
+    if (error) {
+      // FK guard: a run that already produced a version can't be deleted.
+      const fk = /foreign key|violates|constraint/i.test(error.message);
+      push({
+        tone: "danger",
+        title: "Delete failed",
+        detail: fk ? "This run has a published version — undeploy/remove the version first." : error.message,
+      });
+    } else {
+      push({ tone: "info", title: "Run deleted", detail: runId.slice(0, 8) });
+      onBack();
+    }
   }
 
   useEffect(() => {
@@ -69,6 +87,14 @@ export function RunDetail({
   const cfg = (run?.config_yaml as Record<string, any> | undefined) ?? {};
   const logs = (cfg.logs ?? []) as Array<Record<string, any>>;
   const stats = (cfg.dataset_stats ?? {}) as Record<string, any>;
+  const compileOpts = (cfg.compile_options ?? {}) as Record<string, any>;
+
+  // On failure, surface the fatal error up top instead of burying it in logs.
+  const fatalError = useMemo(() => {
+    if (run?.status !== "failed") return null;
+    const errLog = [...logs].reverse().find((l) => l.status === "error" || l.phase === "fatal");
+    return errLog?.message ?? "Run failed — no error detail was logged.";
+  }, [run?.status, logs]);
 
   const displayStatus = useMemo(() => {
     if (!run) return "loading";
@@ -120,9 +146,23 @@ export function RunDetail({
                 <RotateCcw size={14} /> Re-create with same config
               </button>
             )}
+            {(displayStatus === "failed" || displayStatus === "cancelled" || displayStatus === "succeeded") && (
+              <button type="button" className="button danger" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={14} /> Delete
+              </button>
+            )}
           </div>
         </div>
       </section>
+
+      {fatalError && (
+        <section className="panel run-error" role="alert">
+          <h3 className="run-error-title">
+            <AlertTriangle size={16} strokeWidth={2.2} /> Run failed
+          </h3>
+          <pre className="run-error-message">{fatalError}</pre>
+        </section>
+      )}
 
       <ConfirmModal
         open={cancelOpen}
@@ -132,6 +172,16 @@ export function RunDetail({
         danger
         onConfirm={cancelRun}
         onCancel={() => setCancelOpen(false)}
+      />
+
+      <ConfirmModal
+        open={deleteOpen}
+        title="Delete this run?"
+        message="Permanently removes the run row, its metrics and logs. Published versions/artifacts are not deleted. This cannot be undone."
+        confirmLabel="Delete run"
+        danger
+        onConfirm={deleteRun}
+        onCancel={() => setDeleteOpen(false)}
       />
 
       {showColab && (
@@ -165,6 +215,18 @@ export function RunDetail({
           <dd>{cfg.task ?? "—"} · {cfg.output_kind ?? ""}</dd>
           <dt>Hailo target</dt>
           <dd>{cfg.export_options?.hailo_target ?? "—"}</dd>
+          <dt>HEF compile</dt>
+          <dd>
+            {compileOpts.compile_hef ? (
+              <code>
+                on · quant L{compileOpts.opt_level ?? 0}
+                {` · calib ${compileOpts.calib_n ?? "—"}`}
+                {compileOpts.opt_level === 2 ? " (production)" : " (basic)"}
+              </code>
+            ) : (
+              <span className="muted">off (ONNX only)</span>
+            )}
+          </dd>
           <dt>Hyperparameters</dt>
           <dd>
             <code>

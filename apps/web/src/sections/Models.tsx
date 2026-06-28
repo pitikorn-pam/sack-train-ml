@@ -369,6 +369,13 @@ function VersionDetailPanel({
                     {a.quantization && (
                       <div className="muted">
                         {a.quantization.precision} · {a.quantization.method ?? ""}
+                        {a.quantization.optimization_level != null && (
+                          <>
+                            {" · L"}{a.quantization.optimization_level}
+                            {a.quantization.optimization_level === 2 ? " (production)" : " (basic)"}
+                          </>
+                        )}
+                        {a.quantization.calib_images != null && <> · calib {a.quantization.calib_images}</>}
                       </div>
                     )}
                     <button

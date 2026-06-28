@@ -828,6 +828,26 @@ details[open] summary { margin-bottom: var(--space-sm); }
   line-height: 1.55;
 }
 
+.run-error {
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-danger-soft);
+}
+.run-error-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-danger);
+  margin-top: 0;
+}
+.run-error-message {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  color: var(--color-danger);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
 /* =============================================================================
  * Colab steps
  * ============================================================================= */
