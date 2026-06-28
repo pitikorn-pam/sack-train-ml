@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Star, LogOut } from "lucide-react";
+import { LogIn, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
+
+// Username login maps to a Supabase Auth email under this domain. Supabase Auth
+// is email-keyed; we let users type a bare username (e.g. "ipassion") and append
+// the domain so the credential DB (auth.users, bcrypt-hashed) stays the single
+// source of truth. A value already containing "@" is treated as a full email.
+const USERNAME_DOMAIN = "ipassion.co.th";
+
+function usernameToEmail(input: string): string {
+  const v = input.trim();
+  return v.includes("@") ? v : `${v}@${USERNAME_DOMAIN}`;
+}
 
 export function useSession(): Session | null | "loading" {
   const [session, setSession] = useState<Session | null | "loading">("loading");
@@ -15,87 +26,65 @@ export function useSession(): Session | null | "loading" {
   return session;
 }
 
-const QUICK_USERS = [
-  { label: "admin@bscp.local", email: "admin@bscp.local", password: "admin1234", role: "admin" as const },
-  { label: "user@bscp.local",  email: "user@bscp.local",  password: "user1234",  role: "authenticated" as const },
-];
-
 export function SignIn() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function quickSignIn(email: string, password: string) {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
-    setLoading(email);
+    setLoading(true);
     try {
+      const email = usernameToEmail(username);
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+      // onAuthStateChange in useSession picks up the new session.
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Supabase returns "Invalid login credentials" for both wrong user + pw.
+      setError(/invalid login credentials/i.test(msg) ? "Username or password is incorrect." : msg);
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   }
 
-  async function sendMagic(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    if (error) setError(error.message);
-    else setSent(true);
-  }
-
   return (
-    <>
-      <div className="panel">
-        <h2>Quick sign in (dev)</h2>
-        <p className="muted">Pre-seeded test users — one click to enter.</p>
-        <div className="quick-users">
-          {QUICK_USERS.map((u) => (
-            <button
-              key={u.email}
-              className={`quick-user quick-user-${u.role}`}
-              onClick={() => quickSignIn(u.email, u.password)}
-              disabled={loading === u.email}
-              type="button"
-            >
-              <div className="quick-user-role">
-                {u.role === "admin" && <Star size={11} fill="currentColor" strokeWidth={0} />}
-                {u.role === "admin" ? "admin" : "authenticated"}
-              </div>
-              <code>{u.label}</code>
-              <div className="quick-user-hint">
-                {loading === u.email ? "Signing in…" : "click to sign in"}
-              </div>
-            </button>
-          ))}
-        </div>
+    <div className="panel auth-panel">
+      <h2>Sign in</h2>
+      <p className="muted">Enter your BSCP credentials to continue.</p>
+      <form onSubmit={submit} className="stack">
+        <label>
+          Username
+          <input
+            type="text"
+            autoComplete="username"
+            required
+            autoFocus
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="ipassion"
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+        </label>
         {error && <p className="error">{error}</p>}
-      </div>
-
-      <details className="panel">
-        <summary><strong>Or sign in with magic link</strong></summary>
-        {sent ? (
-          <p>A sign-in link was sent to <code>{email}</code>.</p>
-        ) : (
-          <form onSubmit={sendMagic} className="stack">
-            <label>
-              Email
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@ipassion.co.th"
-              />
-            </label>
-            <button type="submit">Send magic link</button>
-          </form>
-        )}
-      </details>
-    </>
+        <button type="submit" className="button primary" disabled={loading}>
+          <LogIn size={14} strokeWidth={2} />
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </div>
   );
 }
 
