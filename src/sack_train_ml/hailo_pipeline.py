@@ -52,6 +52,23 @@ def _venv_python(venv_dir: str | Path) -> Path:
     return py if py.exists() else venv_dir / "Scripts" / "python.exe"
 
 
+def _resolve_dfc_interpreter() -> str:
+    """Pick the interpreter to build the DFC venv on.
+
+    DFC pins ``numpy==1.23.3``, which has no wheel for Python 3.12+ and fails to
+    build from sdist. Colab's bare ``python3`` is 3.12, so probe for a 3.10/3.11
+    interpreter first and fall back to ``python3`` / ``sys.executable`` only if
+    none is found. Returns the interpreter path/name to pass to ``virtualenv -p``.
+    """
+    import shutil
+
+    for name in ("python3.10", "python3.11", "python3"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return sys.executable
+
+
 def _has_dfc(py: Path) -> bool:
     try:
         r = subprocess.run(
@@ -89,10 +106,24 @@ def ensure_dfc_venv(wheel_path: str | Path, venv_dir: str | Path = "/content/hai
         import virtualenv  # noqa: F401
     except ImportError:
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "virtualenv"], check=True)
-    subprocess.run([sys.executable, "-m", "virtualenv", "-p", "python3", str(venv_dir)],
+    interp = _resolve_dfc_interpreter()
+    ver = subprocess.run([interp, "-c", "import sys; print(sys.version_info[0], sys.version_info[1])"],
+                         capture_output=True, text=True)
+    try:
+        major, minor = (int(x) for x in ver.stdout.split())
+    except ValueError:
+        major, minor = 0, 0
+    print(f"[dfc] building venv on interpreter {interp} (python {major}.{minor})")
+    if (major, minor) >= (3, 12):
+        print(f"[dfc] WARNING: interpreter is python {major}.{minor}; DFC pins numpy==1.23.3 which "
+              f"has no wheel for py3.12+ and may fail to build. Install python3.10/3.11 to avoid this.")
+    subprocess.run([sys.executable, "-m", "virtualenv", "-p", interp, str(venv_dir)],
                    check=True)
     pip = venv_dir / "bin" / "pip"
-    subprocess.run([str(pip), "install", "--upgrade", "pip", "wheel"], check=True)
+    # setuptools is REQUIRED before _DFC_VENV_DEPS: numpy==1.23.3 has no wheel for
+    # py3.12 and builds from sdist via setuptools.build_meta. Newer virtualenv/pip
+    # seeds omit setuptools -> "Cannot import 'setuptools.build_meta'" build failure.
+    subprocess.run([str(pip), "install", "--upgrade", "pip", "setuptools", "wheel"], check=True)
     subprocess.run([str(pip), "install", *_DFC_VENV_DEPS], check=True)
     subprocess.run([str(pip), "install", str(wheel_path)], check=True)
 
