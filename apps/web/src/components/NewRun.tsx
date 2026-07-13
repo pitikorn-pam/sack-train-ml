@@ -21,7 +21,26 @@ const SOURCE_WEIGHTS = [
   { value: "yolo11m.pt", label: "YOLO 11m", suffix: "more capacity" },
   { value: "yolo11l.pt", label: "YOLO 11l", suffix: "large" },
   { value: "yolo11x.pt", label: "YOLO 11x", suffix: "maximum capacity" },
+  { value: "yolo26n.pt", label: "YOLO 26n", suffix: "fastest, smallest" },
+  { value: "yolo26s.pt", label: "YOLO 26s", suffix: "balanced" },
+  { value: "yolo26m.pt", label: "YOLO 26m", suffix: "more capacity" },
+  { value: "yolo11s-seg.pt", label: "YOLO 11s-seg", suffix: "instance segmentation" },
+  { value: "yolo26s-seg.pt", label: "YOLO 26s-seg", suffix: "instance segmentation" },
 ];
+
+const WEIGHT_GROUPS = ["Detection", "Segmentation"] as const;
+
+/** Derive the training task + output_kind from the chosen weight filename. */
+function taskForWeight(weight: string): { task: string; output_kind: string } {
+  return weight.endsWith("-seg.pt")
+    ? { task: "segmentation", output_kind: "segmentation-masks" }
+    : { task: "detection", output_kind: "detection-boxes" };
+}
+
+/** Dropdown optgroup for a weight — derived from the same `-seg.pt` rule as the task. */
+function groupForWeight(weight: string): (typeof WEIGHT_GROUPS)[number] {
+  return weight.endsWith("-seg.pt") ? "Segmentation" : "Detection";
+}
 
 const DEFAULT_HP: Hyperparams = {
   epochs: 100,
@@ -147,13 +166,14 @@ export function NewRun({
     }
     setLoading(true);
     try {
+      const { task, output_kind } = taskForWeight(sourceWeights);
       const config = {
         source_weights: sourceWeights,
         dataset: datasetKey,
         classes,
         input_size: [imgsz, imgsz, 3],
-        task: "detection",
-        output_kind: "detection-boxes",
+        task,
+        output_kind,
         hyperparameters: { ...hp, imgsz },
         export_options: { hailo_target: hailoTarget },
         ...(compileHef
@@ -267,10 +287,15 @@ export function NewRun({
           Source weights
           <Hint text="Pretrained YOLO checkpoint to fine-tune. Larger variants improve capacity but increase training and HEF compile cost." />
           <select value={sourceWeights} onChange={(e) => { setSourceWeights(e.target.value); clearError("source_weights"); }}>
-            {SOURCE_WEIGHTS.map((w) => (
-              <option key={w.value} value={w.value}>{w.label} — {w.suffix}</option>
+            {WEIGHT_GROUPS.map((group) => (
+              <optgroup key={group} label={group}>
+                {SOURCE_WEIGHTS.filter((w) => groupForWeight(w.value) === group).map((w) => (
+                  <option key={w.value} value={w.value}>{w.label} — {w.suffix}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
+          <span className="parsed-info">Task: <code>{taskForWeight(sourceWeights).task}</code></span>
           {errors.source_weights && <span className="field-error">{errors.source_weights}</span>}
         </label>
 
