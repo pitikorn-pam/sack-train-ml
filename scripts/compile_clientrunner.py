@@ -52,6 +52,60 @@ def load_calib(d, n, size):
     return a
 
 
+def detect_head(onnx_path, verify_end_nodes=True):
+    """Auto-detect (family, task, nms_mode, end_nodes) from the ONNX graph.
+
+    YOLOv11 and YOLO26 differ in head structure: YOLO26's one-to-one detect head
+    names its convs ``one2one_cv2.N / one2one_cv3.N`` (vs YOLOv11's ``cv2.N / cv3.N``).
+    Segmentation adds a mask-coefficient branch (``cv4.N`` / ``one2one_cv4.N``) plus
+    a ``/proto/`` conv branch. The pre-DFL box conv also differs: YOLOv11 emits a
+    64-ch DFL box (regression_length=16) that the on-chip ``meta_arch=yolov8`` NMS
+    can decode; YOLO26 emits a 4-ch direct box, so the yolov8 on-chip NMS decode is
+    WRONG for it -> those models must compile on the raw (no on-chip NMS) path.
+
+    Returns (family, task, nms_mode, end_nodes):
+      family    : "yolov11" | "yolo26"
+      task      : "detection" | "segmentation"
+      nms_mode  : "onchip" (yolov11 detection only) | "raw"
+      end_nodes : list[str] of pre-head conv names, all verified present in graph.
+    """
+    import onnx
+
+    model = onnx.load(onnx_path)
+    conv_names = {n.name for n in model.graph.node if n.op_type == "Conv"}
+
+    # family: YOLO26 renames the detect head convs with a ``one2one_`` prefix.
+    family = "yolo26" if any("one2one_cv2" in c for c in conv_names) else "yolov11"
+    prefix = "one2one_" if family == "yolo26" else ""
+
+    # task: segmentation has both a proto branch and a mask-coeff (cv4) branch.
+    has_proto = any("/proto/" in c for c in conv_names)
+    has_cv4 = any(f"{prefix}cv4" in c for c in conv_names)
+    task = "segmentation" if (has_proto and has_cv4) else "detection"
+
+    # nms: on-chip yolov8 NMS only decodes the YOLOv11 DFL box; everything else raw.
+    nms_mode = "onchip" if (family == "yolov11" and task == "detection") else "raw"
+
+    end_nodes = []
+    for s in (0, 1, 2):
+        end_nodes.append(f"/model.23/{prefix}cv2.{s}/{prefix}cv2.{s}.2/Conv")
+        end_nodes.append(f"/model.23/{prefix}cv3.{s}/{prefix}cv3.{s}.2/Conv")
+    if task == "segmentation":
+        for s in (0, 1, 2):
+            end_nodes.append(f"/model.23/{prefix}cv4.{s}/{prefix}cv4.{s}.2/Conv")
+        end_nodes.append("/model.23/proto/cv3/conv/Conv")
+
+    # Skip the existence check when the caller will supply --end-nodes explicitly
+    # (an override exists precisely for the rename case that would fail this check).
+    if verify_end_nodes:
+        missing = [n for n in end_nodes if n not in conv_names]
+        if missing:
+            raise SystemExit(
+                f"derived end-nodes not found in ONNX graph ({family}/{task}): {missing}"
+            )
+    return family, task, nms_mode, end_nodes
+
+
 def derive_bbox_decoders(runner, size):
     """Auto-derive bbox_decoders from the parsed HN.
 
@@ -100,14 +154,13 @@ def main():
     ap.add_argument("--reg-len", type=int, default=16)
     # 0 = skip LAT bug / fast (basic quant); 2 = production (needs calib >= 1024)
     ap.add_argument("--opt-level", type=int, default=0)
-    # end-nodes default to YOLOv11 detect-head pre-DFL convs; override if a
-    # re-export renames the graph root (rare — names are stable for model.23).
+    # end-nodes are auto-derived from the ONNX graph (family + task aware, see
+    # detect_head); pass --end-nodes explicitly only to override a rare rename.
     ap.add_argument("--start-node", default="images")
-    ap.add_argument("--end-nodes", default=",".join([
-        "/model.23/cv2.0/cv2.0.2/Conv", "/model.23/cv3.0/cv3.0.2/Conv",  # stride 8
-        "/model.23/cv2.1/cv2.1.2/Conv", "/model.23/cv3.1/cv3.1.2/Conv",  # stride 16
-        "/model.23/cv2.2/cv2.2.2/Conv", "/model.23/cv3.2/cv3.2.2/Conv",  # stride 32
-    ]))
+    ap.add_argument("--end-nodes", default="")
+    # nms: auto = on-chip yolov8 NMS for yolov11-detection only, raw otherwise.
+    # yolo26 (4-ch direct box) and segmentation must NOT use the yolov8 on-chip NMS.
+    ap.add_argument("--nms", choices=["auto", "onchip", "raw"], default="auto")
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     os.environ.setdefault("USER", "hailo")  # Colab runs as root w/o $USER -> compile KeyError
@@ -115,7 +168,18 @@ def main():
     from hailo_sdk_client import ClientRunner
 
     start = a.start_node
-    end = [n.strip() for n in a.end_nodes.split(",") if n.strip()]
+
+    # Auto-detect head family/task from the ONNX graph, then resolve end-nodes and
+    # the NMS mode. Explicit --end-nodes / --nms override the derived values; when
+    # end-nodes are given, skip the derived-name existence check (it's the override
+    # for exactly the rename case that check would reject).
+    explicit_end = [n.strip() for n in a.end_nodes.split(",") if n.strip()]
+    family, task, nms_auto, derived_end = detect_head(
+        a.onnx, verify_end_nodes=not explicit_end
+    )
+    end = explicit_end or derived_end
+    nms_mode = nms_auto if a.nms == "auto" else a.nms
+    print(f"DETECT {json.dumps({'family': family, 'task': task, 'nms': nms_mode, 'end_nodes': end})}")
 
     # ---- 1) PARSE: onnx -> HAR ----
     runner = ClientRunner(hw_arch=a.hw)
@@ -128,26 +192,30 @@ def main():
     runner.save_har(parsed)
     print("PARSED ->", parsed)
 
-    bbox_decoders = derive_bbox_decoders(runner, a.size)
-    print("bbox_decoders:", json.dumps(bbox_decoders, indent=2))
-    assert len(bbox_decoders) == 3, f"expected 3 strides, got {len(bbox_decoders)}"
-
-    # ---- 2) model script: normalization (edge feeds raw uint8) + on-chip NMS ----
-    nms = {
-        "nms_scores_th": a.scores_th, "nms_iou_th": a.iou_th,
-        "image_dims": [a.size, a.size], "max_proposals_per_class": a.max_per_class,
-        "classes": a.classes, "regression_length": a.reg_len,
-        "background_removal": False, "bbox_decoders": bbox_decoders,
-    }
-    nms_json = f"{a.work}/nms_config.json"
-    json.dump(nms, open(nms_json, "w"), indent=2)
+    # ---- 2) model script: normalization (edge feeds raw uint8) [+ on-chip NMS] ----
     # opt_level 0 = skip Bias Correction + Layer Noise Analysis (LAT bug) -> fast, basic quant
     # production: calib >= 1024 + opt_level 2 (Simple LAT + bias correction, better quant)
     alls = (
         f"model_optimization_flavor(optimization_level={a.opt_level}, compression_level=0)\n"
         f"normalization1 = normalization([0.0,0.0,0.0],[255.0,255.0,255.0])\n"
-        f'nms_postprocess("{nms_json}", meta_arch=yolov8, engine=cpu)\n'
     )
+    # On-chip yolov8 NMS is only valid for the YOLOv11 DFL box (16-ch reg). On the
+    # raw path we skip nms_postprocess entirely — decode happens off-chip on the edge.
+    if nms_mode == "onchip":
+        bbox_decoders = derive_bbox_decoders(runner, a.size)
+        print("bbox_decoders:", json.dumps(bbox_decoders, indent=2))
+        assert len(bbox_decoders) == 3, f"expected 3 strides, got {len(bbox_decoders)}"
+        nms = {
+            "nms_scores_th": a.scores_th, "nms_iou_th": a.iou_th,
+            "image_dims": [a.size, a.size], "max_proposals_per_class": a.max_per_class,
+            "classes": a.classes, "regression_length": a.reg_len,
+            "background_removal": False, "bbox_decoders": bbox_decoders,
+        }
+        nms_json = f"{a.work}/nms_config.json"
+        json.dump(nms, open(nms_json, "w"), indent=2)
+        alls += f'nms_postprocess("{nms_json}", meta_arch=yolov8, engine=cpu)\n'
+    else:
+        print(f"nms=raw ({family}/{task}) — skipping on-chip nms_postprocess")
     print("--- alls ---\n" + alls)
     runner.load_model_script(alls)
 

@@ -45,6 +45,18 @@ def main(argv: list[str] | None = None) -> int:
     if a.source_onnx and Path(a.source_onnx).exists():
         onnx_sha, _ = sha256_file(a.source_onnx)
 
+    # Auto-detect head family + NMS mode when the source ONNX is available, so a
+    # regenerated meta matches what compile_onnx_to_hef writes. Absent otherwise.
+    family = nms_mode = None
+    if a.source_onnx and Path(a.source_onnx).exists():
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from compile_clientrunner import detect_head
+
+            family, _task, nms_mode, _end = detect_head(a.source_onnx)
+        except Exception as e:  # onnx missing or unrecognized graph — leave absent
+            print(f"[meta] head auto-detect skipped: {e}")
+
     meta = {
         "model_name": hef.stem,
         "target": a.target,
@@ -56,8 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         "hef_size_bytes": size,
         "hef_sha256": sha,
         "compiler": "dfc_clientrunner",
+        "model_family": family,
         "optimization_level": a.opt_level,
         "calib_images": a.calib_n,
+        "nms": {"mode": nms_mode},
     }
     meta_path = hef.with_suffix(hef.suffix + ".meta.yaml")
     meta_path.write_text(_dump_simple_yaml(meta))

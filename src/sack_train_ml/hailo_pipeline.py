@@ -32,7 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPILE_SCRIPT = REPO_ROOT / "scripts" / "compile_clientrunner.py"
 
 # Pinned DFC venv deps (match notebooks/compile_run.ipynb cell 10).
-_DFC_VENV_DEPS = ["numpy==1.23.3", "scipy==1.10.1", "pillow"]
+# ``onnx`` is needed by compile_clientrunner.detect_head to read the graph and
+# derive end-nodes before translate_onnx_model (family/task auto-detection).
+_DFC_VENV_DEPS = ["numpy==1.23.3", "scipy==1.10.1", "pillow", "onnx"]
 
 
 @dataclass
@@ -256,6 +258,17 @@ def compile_onnx_to_hef(
     if not hef_path.exists():
         raise FileNotFoundError(f"compile finished but {hef_path} not present")
 
+    # The compile script prints a ``DETECT {json}`` line with the auto-detected
+    # head family + NMS mode; surface those in the meta so the edge knows whether
+    # the HEF carries on-chip NMS (yolov11 detect) or needs off-chip decode (raw).
+    detected: dict[str, Any] = {}
+    for line in result.stdout.splitlines():
+        if line.startswith("DETECT "):
+            try:
+                detected = json.loads(line[len("DETECT "):])
+            except json.JSONDecodeError:
+                pass
+
     sha, size = sha256_file(hef_path)
     meta = {
         "model_name": model_name,
@@ -268,9 +281,11 @@ def compile_onnx_to_hef(
         "hef_size_bytes": size,
         "hef_sha256": sha,
         "compiler": "dfc_clientrunner",
+        "model_family": detected.get("family"),
         "optimization_level": opt_level,
         "calib_images": calib_n,
         "nms": {
+            "mode": detected.get("nms"),
             "scores_th": scores_th, "iou_th": iou_th,
             "max_per_class": max_per_class, "regression_length": reg_len,
         },
