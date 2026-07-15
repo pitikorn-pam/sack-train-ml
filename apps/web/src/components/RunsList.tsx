@@ -10,6 +10,24 @@ const STATUS_COLOR: Record<Run["status"], string> = {
   cancelled: "#6b7280",
 };
 
+/** Read a field out of a run's config_yaml (stored by NewRun). */
+function cfgField(run: Run, key: string): string | undefined {
+  const v = (run.config_yaml as Record<string, unknown> | undefined)?.[key];
+  return typeof v === "string" ? v : undefined;
+}
+
+/** "yolo11s-seg.pt" -> "11s-seg"; "yolo26m.pt" -> "26m". */
+function shortWeight(weight?: string): string {
+  if (!weight) return "—";
+  return weight.replace(/^yolo/, "").replace(/\.pt$/, "");
+}
+
+/** Last path segment of an R2 dataset key, for compact display. */
+function shortDataset(key?: string): string {
+  if (!key) return "—";
+  return key.split("/").filter(Boolean).pop() ?? key;
+}
+
 interface Props {
   onSelect: (id: string) => void;
   filter?: Run["status"];
@@ -49,6 +67,9 @@ export function RunsList({ onSelect, filter }: Props) {
           <tr>
             <th>Created</th>
             <th>Status</th>
+            <th>Model</th>
+            <th>Dataset</th>
+            <th>Note</th>
             <th>Run ID</th>
             <th>Git SHA</th>
             <th>Started</th>
@@ -65,13 +86,30 @@ export function RunsList({ onSelect, filter }: Props) {
                 />
                 {r.status}
               </td>
+              <td>
+                {(() => {
+                  const task = cfgField(r, "task");
+                  return (
+                    <>
+                      {task && (
+                        <span className={`pill pill-${task === "segmentation" ? "info" : "active"}`}>
+                          {task === "segmentation" ? "seg" : "det"}
+                        </span>
+                      )}{" "}
+                      <code>{shortWeight(cfgField(r, "source_weights"))}</code>
+                    </>
+                  );
+                })()}
+              </td>
+              <td><code>{shortDataset(cfgField(r, "dataset"))}</code></td>
+              <td className="muted">{cfgField(r, "note") ?? "—"}</td>
               <td><code>{r.id.slice(0, 8)}</code></td>
               <td><code>{r.git_sha ?? "—"}</code></td>
               <td>{r.started_at ? formatDateTime(r.started_at) : "—"}</td>
             </tr>
           ))}
           {runs.length === 0 && (
-            <tr><td colSpan={5} className="muted">No runs.</td></tr>
+            <tr><td colSpan={8} className="muted">No runs.</td></tr>
           )}
         </tbody>
       </table>
