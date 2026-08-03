@@ -61,7 +61,13 @@ def validate_dataset(yaml_path: str | Path, classes: list[str]) -> DatasetStats:
     Returns DatasetStats. Raises ValueError on hard mismatches.
     """
     cfg = load_dataset_yaml(yaml_path)
-    root = Path(cfg.get("path", "."))
+    # Roboflow exports ship no `path:` key. Anchor on the YAML's own folder
+    # rather than the cwd, which is wherever the caller happened to run from.
+    root = Path(cfg.get("path") or Path(yaml_path).resolve().parent)
+    if not root.is_dir():
+        # A stale absolute `path:` (e.g. baked on another machine before the
+        # dataset was copied here) must not win over the YAML's real location.
+        root = Path(yaml_path).resolve().parent
     names = cfg.get("names") or {}
     name_count = len(names) if isinstance(names, (list, tuple)) else len(names)
     declared = len(classes)
@@ -105,6 +111,12 @@ def _resolve_split_dir(root: Path, ref: str | list[str], kind: str) -> Path:
         # multi-source list — just take first
         ref = ref[0]
     p = (root / ref).resolve()
+    if not p.is_dir():
+        # Roboflow writes `../train/images`, which climbs out of the dataset
+        # root. Retry with the prefix stripped before giving up.
+        alt = (root / str(ref).lstrip("./")).resolve()
+        if alt.is_dir():
+            p = alt
     if kind == "labels":
         # swap the LAST occurrence of /images/ → /labels/
         parts = list(p.parts)

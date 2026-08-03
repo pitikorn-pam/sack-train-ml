@@ -58,6 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-hef", action="store_true",
                    help="force-skip the in-flow HEF compile even if compile_options.compile_hef is set")
+    p.add_argument("--dataset-dir", default=os.environ.get("BSCP_DATASET_DIR") or None,
+                   help="use an already-present dataset folder (must contain data.yaml) "
+                        "instead of downloading the one named in the run config. "
+                        "Defaults to $BSCP_DATASET_DIR.")
     args = p.parse_args(argv)
 
     run_id = args.run_id
@@ -73,10 +77,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         # 2. Materialize + validate dataset
-        dataset_yaml = _materialize_dataset(config, client, run_id)
+        dataset_yaml = _materialize_dataset(config, client, run_id, args.dataset_dir)
         stats = validate_dataset(dataset_yaml, config.classes)
         client.log_step(run_id, 2, "dataset", "ok",
-                        f"dataset OK · train={stats.train_images} val={stats.val_images}")
+                        f"dataset OK · train={stats.train_images} val={stats.val_images} "
+                        f"yaml={dataset_yaml}")
 
         if args.dry_run:
             client.log_step(run_id, 1, "init", "info", "dry-run; stopping before train")
@@ -309,10 +314,18 @@ def _maybe_compile_hef(
             pass
 
 
-def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Path:
+def _materialize_dataset(
+    config: Any,
+    client: RegistryClient,
+    run_id: str,
+    dataset_dir: str | None = None,
+) -> Path:
     """Materialize the YOLO dataset locally and return the path to data.yaml.
 
-    Supports three forms:
+    Supports four forms:
+      0. ``dataset_dir`` (``--dataset-dir`` / ``BSCP_DATASET_DIR``) points at an
+         already-present dataset folder → use the ``data.yaml`` inside it and
+         skip every download. Overrides the run config.
       1. ``config.dataset`` is a local path (used in dev/tests)
       2. ``config.dataset`` is ``datasets/...`` only → just the YAML (paths must
          already exist on disk; rare)
@@ -321,6 +334,18 @@ def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Pa
          extracted root so its relative paths resolve.
     """
     from urllib.request import urlopen
+
+    if dataset_dir:
+        root = Path(dataset_dir).expanduser().resolve()
+        if not root.is_dir():
+            raise FileNotFoundError(f"--dataset-dir does not exist: {root}")
+        local_yaml = root / "data.yaml"
+        if not local_yaml.exists():
+            raise FileNotFoundError(f"no data.yaml inside --dataset-dir {root}")
+        client.log_step(run_id, 2, "dataset", "info",
+                        f"using local dataset dir (config.dataset ignored) → {root}")
+        _normalize_dataset_yaml(local_yaml, root, client, run_id)
+        return local_yaml
 
     def _download(ref: str, dest: Path) -> None:
         url = client.download_dataset(ref)
@@ -384,7 +409,12 @@ def _materialize_dataset(config: Any, client: RegistryClient, run_id: str) -> Pa
         client.log_step(run_id, 2, "dataset", "info", f"pulled {dataset_ref} → {local}")
         return local
 
-    return Path(dataset_ref)
+    local_yaml = Path(dataset_ref).expanduser().resolve()
+    if local_yaml.is_dir():
+        local_yaml = local_yaml / "data.yaml"
+    if local_yaml.exists():
+        _normalize_dataset_yaml(local_yaml, local_yaml.parent, client, run_id)
+    return local_yaml
 
 
 def _normalize_dataset_yaml(
