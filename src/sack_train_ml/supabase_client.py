@@ -172,14 +172,25 @@ class RegistryClient:
             )
 
     def log_step(self, run_id: str, step: int, phase: str, status: str, message: str) -> None:
-        self._call_callback({
-            "type": "log",
-            "run_id": run_id,
-            "step": step,
-            "phase": phase,
-            "status": status,
-            "message": message,
-        })
+        """Best-effort progress log. Never raises.
+
+        These calls sit between the expensive stages (train → eval → export →
+        upload). A dead callback endpoint must not be able to discard finished
+        work, so a failure here is printed and swallowed. Anything that has to
+        succeed — patch_run, finalize_run, upload_artifact — still raises.
+        """
+        try:
+            self._call_callback({
+                "type": "log",
+                "run_id": run_id,
+                "step": step,
+                "phase": phase,
+                "status": status,
+                "message": message,
+            })
+        except Exception as exc:
+            print(f"[warn] log_step({phase}/{status}) dropped: "
+                  f"{type(exc).__name__}: {exc} — {message}", flush=True)
 
     # ---- artifacts -----------------------------------------------------------
 
@@ -321,21 +332,25 @@ class RegistryClient:
             sig = hmac.new(self.callback_secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
             headers["x-training-signature"] = f"sha256={sig}"
         req = Request(url, data=raw.encode(), method="POST", headers=headers)
-        # Retry once on transient 5xx
-        for attempt in (1, 2):
+        # Ride out transient 5xx / connection blips: a callback that gives up
+        # after 0.5s can take a multi-hour training run down with it.
+        attempts = 4
+        for i in range(attempts):
             try:
                 with urlopen(req, timeout=15) as r:
                     r.read()
                 return
             except HTTPError as e:
-                if 500 <= e.code < 600 and attempt == 1:
-                    time.sleep(0.5)
-                    continue
-                try:
-                    detail = e.read().decode()
-                except Exception:
-                    detail = str(e)
-                raise RegistryError(f"training-callback -> {e.code}: {detail}") from None
+                if e.code not in _RETRY_STATUSES or i == attempts - 1:
+                    try:
+                        detail = e.read().decode()
+                    except Exception:
+                        detail = str(e)
+                    raise RegistryError(f"training-callback -> {e.code}: {detail}") from None
+            except (URLError, TimeoutError) as e:  # dropped connection / DNS blip
+                if i == attempts - 1:
+                    raise RegistryError(f"training-callback -> {type(e).__name__}: {e}") from None
+            time.sleep(0.5 * 2 ** i)
 
 
 def _now_iso() -> str:

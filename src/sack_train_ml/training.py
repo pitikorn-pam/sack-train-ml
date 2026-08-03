@@ -73,25 +73,35 @@ def make_metric_callback(
     """Return an ``on_fit_epoch_end(trainer)`` callback for YOLO."""
 
     def _on_fit_epoch_end(trainer: Any) -> None:  # pragma: no cover - YOLO runtime
-        try:
-            metrics = dict(getattr(trainer, "metrics", {}) or {})
-        except Exception:
-            metrics = {}
+        # Telemetry must never abort training. Anything raised in here escapes
+        # through ultralytics' callback loop and kills the run mid-epoch — a
+        # single 502 from the callback endpoint once discarded 197 finished
+        # epochs. The old code was doubly exposed: the handler for a failed
+        # log_metrics called log_step, which hits the same dead endpoint.
         epoch = int(getattr(trainer, "epoch", 0))
-        progress = (epoch + 1) / max(1, total_epochs) * 100.0
-        rows = [
-            {"step": epoch, "epoch": epoch, "name": name, "value": float(value)}
-            for name, value in metrics.items()
-            if _is_number(value)
-        ]
-        rows.append({"step": epoch, "epoch": epoch, "name": "progress", "value": progress})
         try:
+            try:
+                metrics = dict(getattr(trainer, "metrics", {}) or {})
+            except Exception:
+                metrics = {}
+            progress = (epoch + 1) / max(1, total_epochs) * 100.0
+            rows = [
+                {"step": epoch, "epoch": epoch, "name": name, "value": float(value)}
+                for name, value in metrics.items()
+                if _is_number(value)
+            ]
+            rows.append({"step": epoch, "epoch": epoch, "name": "progress", "value": progress})
             client.log_metrics(run_id, rows)
         except Exception as exc:
-            client.log_step(
-                run_id, 5, "training", "warning",
-                f"metric stream failed at epoch {epoch}: {exc}",
-            )
+            print(f"[warn] metric stream failed at epoch {epoch}: "
+                  f"{type(exc).__name__}: {exc} — training continues", flush=True)
+            try:
+                client.log_step(
+                    run_id, 5, "training", "warning",
+                    f"metric stream failed at epoch {epoch}: {exc}",
+                )
+            except Exception:
+                pass  # same endpoint is down — don't take the run with it
 
     return _on_fit_epoch_end
 
