@@ -58,6 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-hef", action="store_true",
                    help="force-skip the in-flow HEF compile even if compile_options.compile_hef is set")
+    p.add_argument("--resume-from", default=os.environ.get("BSCP_RESUME_FROM") or None,
+                   help="continue an interrupted run from a last.pt checkpoint. Epoch count "
+                        "and hyperparameters are taken from the checkpoint, not the run config. "
+                        "Defaults to $BSCP_RESUME_FROM.")
     p.add_argument("--dataset-dir", default=os.environ.get("BSCP_DATASET_DIR") or None,
                    help="use an already-present dataset folder (must contain data.yaml) "
                         "instead of downloading the one named in the run config. "
@@ -97,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             dataset_yaml_path=dataset_yaml,
             project_dir=str(run_dir.parent),
             run_name=run_id,
+            resume_from=args.resume_from,
         )
         save_dir = Path(getattr(model, "trainer", None).save_dir) if hasattr(model, "trainer") else run_dir
         best_pt = _find_best_pt(save_dir)

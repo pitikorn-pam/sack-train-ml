@@ -121,8 +121,16 @@ def train_yolo(
     dataset_yaml_path: str | Path,
     project_dir: str | Path,
     run_name: str,
+    resume_from: str | Path | None = None,
 ) -> Any:
     """Run YOLO training. Returns the YOLO model after training finishes.
+
+    ``resume_from`` continues an interrupted run from a ``last.pt``: ultralytics
+    restores the optimizer, scaler, EMA and best_fitness from the checkpoint and
+    picks up at the next epoch. The checkpoint's own training args win — epoch
+    count and hyperparameters come from it, not from ``config`` — and ``data``
+    is only consulted when the dataset path baked into the checkpoint no longer
+    exists, which is why it is still passed.
 
     Raises on training failure — caller is responsible for finalize_run('failed').
     """
@@ -131,12 +139,25 @@ def train_yolo(
     kwargs = build_train_kwargs(config, dataset_yaml_path, project_dir, run_name)
     epochs = int(kwargs.get("epochs", 100))
 
-    model = YOLO(config.source_weights)
+    if resume_from:
+        ckpt = Path(resume_from).expanduser().resolve()
+        if not ckpt.is_file():
+            raise FileNotFoundError(f"--resume-from checkpoint not found: {ckpt}")
+        model = YOLO(str(ckpt))
+        kwargs = {"resume": str(ckpt), "data": str(dataset_yaml_path)}
+    else:
+        model = YOLO(config.source_weights)
+
     cb = make_metric_callback(client, run_id, epochs)
     model.add_callback("on_fit_epoch_end", cb)
 
-    client.log_step(run_id, 5, "training", "started",
-                    f"YOLO train starting · epochs={epochs} imgsz={kwargs.get('imgsz')}")
+    if resume_from:
+        client.log_step(run_id, 5, "training", "started",
+                        f"YOLO train RESUMING from {Path(resume_from).name} · "
+                        f"epochs/hyperparams come from the checkpoint")
+    else:
+        client.log_step(run_id, 5, "training", "started",
+                        f"YOLO train starting · epochs={epochs} imgsz={kwargs.get('imgsz')}")
     model.train(**kwargs)
     client.log_step(run_id, 5, "training", "ok", "YOLO train finished")
     return model
