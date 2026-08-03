@@ -375,11 +375,11 @@ def _materialize_dataset(
         client.log_step(run_id, 2, "dataset", "info",
                         f"extracted {bundle_ref} → {extract_root}")
 
-        # If the zip has a single top-level directory, descend into it so
-        # the YAML's relative paths line up.
-        entries = [p for p in extract_root.iterdir() if not p.name.startswith(".")]
-        if len(entries) == 1 and entries[0].is_dir():
-            extract_root = entries[0]
+        # Descend to the folder that actually holds the split dirs, so the
+        # YAML's relative paths line up.
+        extract_root = _descend_to_dataset_root(extract_root)
+        client.log_step(run_id, 2, "dataset", "info",
+                        f"dataset root → {extract_root}")
 
         # Locate or place data.yaml inside the extracted root.
         if dataset_ref and dataset_ref.startswith("datasets/"):
@@ -415,6 +415,31 @@ def _materialize_dataset(
     if local_yaml.exists():
         _normalize_dataset_yaml(local_yaml, local_yaml.parent, client, run_id)
     return local_yaml
+
+
+_ARCHIVE_JUNK = {"__MACOSX", "__pycache__"}
+
+
+def _descend_to_dataset_root(root: Path, max_depth: int = 3) -> Path:
+    """Walk down to the folder that actually holds the YOLO split dirs.
+
+    A zip made by macOS Finder wraps the dataset in a folder *and* adds a
+    sibling ``__MACOSX`` entry, so "exactly one top-level dir" is not a safe
+    test — it silently leaves the root one level too high and every split
+    counts 0. Roboflow's own zips are flat, which is why this only started
+    biting once datasets were re-zipped by hand.
+    """
+    for _ in range(max_depth):
+        if (root / "train").is_dir() or (root / "images").is_dir():
+            return root
+        subs = [
+            p for p in root.iterdir()
+            if p.is_dir() and p.name not in _ARCHIVE_JUNK and not p.name.startswith(".")
+        ]
+        if len(subs) != 1:
+            return root
+        root = subs[0]
+    return root
 
 
 def _normalize_dataset_yaml(
