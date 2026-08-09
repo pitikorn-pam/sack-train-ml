@@ -280,10 +280,12 @@ async def infer(
             base["classes"] = tuple(base["classes"])
         try:
             if "line" in base:
-                if isinstance(base["line"], dict):
-                    # The canonical wire object carries inflip alongside geometry.
-                    base["inflip"] = base["line"]["inflip"]
-                base["line"] = _normalize_line(base["line"])
+                line_value = base["line"]
+                # Validate the canonical object before reading inflip so malformed
+                # wire data becomes a client error rather than an uncaught KeyError.
+                base["line"] = _normalize_line(line_value)
+                if isinstance(line_value, dict):
+                    base["inflip"] = line_value["inflip"]
             cfg = lab_core.LabConfig(**base)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
