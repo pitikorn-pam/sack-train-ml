@@ -8,14 +8,16 @@ import { Overview } from "./sections/Overview";
 import { Train } from "./sections/Train";
 import { Models } from "./sections/Models";
 import { Storage } from "./sections/Storage";
+import { Lab } from "./sections/Lab";
 
-type Section = "overview" | "train" | "models" | "storage";
+type Section = "overview" | "train" | "models" | "storage" | "lab";
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "train", label: "Train" },
   { key: "models", label: "Models" },
   { key: "storage", label: "Storage" },
+  { key: "lab", label: "Lab" },
 ];
 
 export default function App() {
@@ -101,6 +103,7 @@ function AppInner() {
         {section === "train" && <Train />}
         {section === "models" && <Models isAdmin={isAdmin} />}
         {section === "storage" && <Storage isAdmin={isAdmin} />}
+        {section === "lab" && <Lab />}
       </main>
     </div>
   );
