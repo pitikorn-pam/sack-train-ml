@@ -17,6 +17,7 @@ import math
 import sys
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from dataclasses import asdict
 from pathlib import Path
 
@@ -34,6 +35,9 @@ app.add_middleware(
 )
 
 _VIDEO_STORE: dict[str, str] = {}   # video_id -> output mp4 path
+_RUN_HISTORY: dict[str, dict] = {}  # bounded, process-local truthful history
+MAX_RUN_HISTORY = 100
+RUN_SCHEMA_VERSION = "lab.v1"
 
 # Upload limits are enforced while streaming to disk, rather than after reading
 # the whole multipart part into memory.  The model limit is intentionally
@@ -116,6 +120,80 @@ def _model_id(path: str | Path) -> str:
         raise ValueError("model path must resolve inside the Lab models directory") from exc
 
 
+def _redact_config(value: object, *, model_identifier: str | None = None) -> object:
+    """Return a JSON-safe config snapshot without secrets or local paths."""
+    secret_words = ("secret", "password", "token", "api_key", "apikey", "credential")
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            key_text = str(key).lower()
+            if any(word in key_text for word in secret_words):
+                result[key] = "<redacted>"
+            elif key == "model_path":
+                result[key] = model_identifier or "<redacted>"
+            else:
+                result[key] = _redact_config(item, model_identifier=model_identifier)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_redact_config(item, model_identifier=model_identifier) for item in value]
+    if isinstance(value, Path):
+        return "<redacted>"
+    return value
+
+
+def _sha256_file(path: str | Path) -> str | None:
+    candidate = Path(path)
+    if not candidate.is_file():
+        return None
+    digest = hashlib.sha256()
+    with candidate.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(_UPLOAD_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_run_manifest(*, run_id: str, created_at: str, result: lab_core.LabResult,
+                       config: dict, model_identifier: str, model_sha256: str | None,
+                       model_size_bytes: int | None, input_filename: str | None,
+                       input_sha256: str | None, video_id: str, video_url: str) -> dict:
+    """Build the reproducibility record from actual inference inputs/outputs."""
+    safe_config = _redact_config(config, model_identifier=model_identifier)
+    events = result.events or []
+    manifest = {
+        "schema_version": RUN_SCHEMA_VERSION,
+        "run_id": run_id,
+        "created_at": created_at,
+        "source": "lab",
+        "input": {
+            "filename": Path(input_filename).name if input_filename else None,
+            "sha256": input_sha256,
+            "video_width": result.video_width,
+            "video_height": result.video_height,
+            "fps": result.fps,
+            "frame_count": result.frame_count,
+            "frame_start": config.get("frame_start", 0),
+            "frame_end": config.get("frame_end", 0),
+            "frame_stride": config.get("frame_stride", 1),
+        },
+        "model": {
+            "identifier": model_identifier,
+            "sha256": model_sha256,
+            "size_bytes": model_size_bytes,
+        },
+        "config": safe_config,
+        "counts": {
+            "summary": result.summary,
+            "events": {
+                "count": len(events),
+                "event_ids": [event.get("event_id") for event in events],
+                "provenance_fields": sorted({key for event in events for key in (event.get("provenance") or {})}),
+            },
+        },
+        "output": {"video_id": video_id, "video_url": video_url},
+    }
+    return manifest
+
+
 def _resolve_legacy_model_path(path: str) -> str:
     """Resolve a legacy model ID, rejecting traversal and outside absolute paths."""
     if not isinstance(path, str) or not path.strip():
@@ -138,7 +216,7 @@ def health():
         "ok": True,
         "service": "lab",
         "device_default": "mps",
-        "capabilities": {"tracker": True, "healer": False, "scorer": False},
+        "capabilities": {"tracker": True, "healer": False, "scorer": True},
     }
 
 
@@ -161,9 +239,10 @@ async def infer(
     in_path: str | None = None
     model_path: str | None = None
     model_metadata: dict[str, object] = {}
+    input_sha256: str | None = None
     try:
-        in_path, _, _ = await _persist_upload(
-            video, suffix=suffix, max_bytes=MAX_VIDEO_UPLOAD_BYTES, label="video"
+        in_path, _, input_sha256 = await _persist_upload(
+            video, suffix=suffix, max_bytes=MAX_VIDEO_UPLOAD_BYTES, label="video", hash_upload=True
         )
 
         if model is not None:
@@ -220,6 +299,11 @@ async def infer(
             # Preserve the default and old absolute-path config shape, but only
             # after constraining both forms to MODELS_DIR.
             cfg.model_path = _resolve_legacy_model_path(cfg.model_path)
+            model_metadata = {
+                "model_identifier": _model_id(cfg.model_path),
+                "model_sha256": _sha256_file(cfg.model_path),
+                "model_size_bytes": Path(cfg.model_path).stat().st_size if Path(cfg.model_path).is_file() else None,
+            }
 
         try:
             result = lab_core.run_inference(in_path, cfg)
@@ -227,11 +311,30 @@ async def infer(
             raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
         vid = uuid.uuid4().hex
         _VIDEO_STORE[vid] = result.output_video
+        run_id = uuid.uuid4().hex
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        model_identifier = str(model_metadata.get("model_identifier") or model_metadata.get("model_filename") or "uploaded-model")
+        manifest_model_sha256 = model_metadata.get("model_sha256") if isinstance(model_metadata.get("model_sha256"), str) else None
+        manifest_model_size = model_metadata.get("model_size_bytes") if isinstance(model_metadata.get("model_size_bytes"), int) else None
+        manifest = build_run_manifest(
+            run_id=run_id, created_at=created_at, result=result,
+            config=asdict(cfg), model_identifier=model_identifier,
+            model_sha256=manifest_model_sha256, model_size_bytes=manifest_model_size,
+            input_filename=video.filename, input_sha256=input_sha256,
+            video_id=vid, video_url=f"/api/lab/video/{vid}",
+        )
+        _RUN_HISTORY[run_id] = manifest
+        while len(_RUN_HISTORY) > MAX_RUN_HISTORY:
+            del _RUN_HISTORY[next(iter(_RUN_HISTORY))]
         payload = asdict(result)
         payload.pop("output_video", None)
+        payload["config"] = manifest["config"]
         payload["video_id"] = vid
         payload["video_url"] = f"/api/lab/video/{vid}"
-        payload.update(model_metadata)
+        payload["run_id"] = run_id
+        payload["schema_version"] = RUN_SCHEMA_VERSION
+        payload["manifest"] = manifest
+        payload.update({key: value for key, value in model_metadata.items() if key != "model_filename"})
         return JSONResponse(payload)
     finally:
         if in_path is not None:
@@ -246,6 +349,13 @@ def get_video(video_id: str):
     if not path or not Path(path).exists():
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/lab/runs")
+def runs():
+    """List manifests retained by this process; no durable history is claimed."""
+    return {"schema_version": RUN_SCHEMA_VERSION, "persistent": False,
+            "runs": list(reversed(list(_RUN_HISTORY.values())))}
 
 
 if __name__ == "__main__":

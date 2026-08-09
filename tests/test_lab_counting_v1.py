@@ -59,7 +59,7 @@ def test_tracker_dedup_and_summary_invariants():
     assert events[0]["track_id"] == 1
     assert events[0]["status"] == "confirmed"
     summary = summarize_events(events)
-    assert summary == {"total": 1, "total_crossings": 1, "confirmed": 1, "flagged": 0, "excluded": 0, "recovered": 0}
+    assert summary == {"total": 1, "total_crossings": 1, "confirmed": 1, "flagged": 0, "dropped": 0, "excluded": 0, "recovered": 0}
 
 
 def test_tracker_expires_tracks_after_buffer():

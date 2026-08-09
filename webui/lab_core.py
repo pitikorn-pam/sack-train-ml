@@ -15,6 +15,8 @@ from dataclasses import dataclass, field, asdict
 import math
 from pathlib import Path
 
+from lab_path import PathPoint, TrackPath, predict, predictor_metadata
+
 try:  # Keep pure counting helpers importable in lightweight test environments.
     import cv2
     import numpy as np
@@ -65,9 +67,16 @@ class LabConfig:
     conf_split: float = 0.60        # CONF_THRESHOLD confirmed/flagged
     roi_dedup_px: int = 25
     roi_dedup_frames: int = 120
-    count_cooldown_frames: int = 120
+    count_cooldown_frames: int = 40
+    ground_truth: int | None = None
+    tolerance_pct: float | None = None
     heal: bool = False
     heal_require_person: bool = True
+    hist_len: int = 8
+    predictor: str = "quadratic"
+    trace_full: bool = False
+    scorer_mode: str = "passthrough"
+    scorer_config: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -84,6 +93,10 @@ class LabResult:
     events: list = field(default_factory=list)
     summary: dict = field(default_factory=dict)
     config: dict = field(default_factory=dict)
+    video_width: int = 0
+    video_height: int = 0
+    fps: float = 0.0
+    frame_count: int = 0
 
 
 def side_of_line(point: tuple[float, float], line: tuple[float, float, float, float]) -> int:
@@ -110,8 +123,72 @@ def validate_line(line: object, width: int, height: int) -> tuple[int, int, int,
     return result
 
 
+def score_crossing(event: dict, *, mode: str = "passthrough", conf_split: float = 0.60,
+                   features: dict | None = None, scorer_config: dict | None = None) -> dict:
+    """Return a truthful, dependency-free crossing verdict and audit fields.
+
+    Passthrough deliberately preserves the historical confidence split. Fused is
+    opt-in and uses centered [0, 1] features; absent features remain neutral.
+    Vetoes require explicit evidence in ``features`` and never infer geometry.
+    """
+    mode = str(mode or "passthrough").lower()
+    if mode not in {"passthrough", "fused"}:
+        raise ValueError("scorer mode must be passthrough or fused")
+    features = dict(features or {})
+    config = {"conf_split": float(conf_split), "threshold_confirmed": 0.65,
+              "threshold_flagged": 0.45, "logit_b0": 0.0, "recovered_bias": 0.0,
+              "weights": {"detection_conf": 1.0, "track_stability": 1.0,
+                          "velocity_alignment": 1.0, "motion_evidence": 1.0,
+                          "identity_integrity": 1.0, "healer_link_quality": 1.0,
+                          "static_in_zone_penalty": -1.0, "box_aspect_sanity": 1.0}}
+    config.update(scorer_config or {})
+    weights = dict(config.get("weights") or {})
+    config["weights"] = weights
+    breakdown = {"features": {}, "contributions": {}, "veto": None}
+    provenance = {}
+    if mode == "passthrough":
+        verdict = "confirmed" if float(event["detection_conf"]) >= float(conf_split) else "flagged"
+        score = None
+    else:
+        logit = float(config["logit_b0"])
+        for name, weight in weights.items():
+            raw = features.get(name, 0.5)
+            try:
+                raw = min(1.0, max(0.0, float(raw)))
+            except (TypeError, ValueError):
+                raw = 0.5
+            centered = 2.0 * raw - 1.0
+            contribution = float(weight) * centered
+            breakdown["features"][name] = {"raw": raw, "centered": centered}
+            breakdown["contributions"][name] = contribution
+            logit += contribution
+        if features.get("recovered"):
+            logit += float(config["recovered_bias"])
+        score = 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, logit))))
+        vetoes = (("non_sack", "non_sack_class"), ("dedup_collision", "dedup_collision"),
+                  ("out_of_frame", "out_of_frame"), ("static_in_zone_phantom", "static_in_zone_phantom"))
+        for evidence_key, veto_name in vetoes:
+            if features.get(evidence_key) is True:
+                breakdown["veto"] = veto_name
+                provenance[evidence_key] = features.get(f"{evidence_key}_evidence", True)
+                break
+        if breakdown["veto"]:
+            verdict = "dropped"
+        elif score >= float(config["threshold_confirmed"]):
+            verdict = "confirmed"
+        elif score >= float(config["threshold_flagged"]):
+            verdict = "flagged"
+        else:
+            verdict = "dropped"
+    return {"score": score, "verdict": verdict, "score_breakdown": breakdown,
+            "scorer": {"mode": mode, "config": config}, "feature_provenance": provenance}
+
+
 def derive_crossing_event(previous_side, current_side, inflip, frame_index, timestamp_ms,
-                          track_id, detection, exclusion_zone, conf_split, sequence):
+                          track_id, detection, exclusion_zone, conf_split, sequence,
+                          path: TrackPath | None = None, predictor: str = "quadratic",
+                          scorer_mode: str = "passthrough", scorer_config: dict | None = None,
+                          scorer_features: dict | None = None):
     """Build one auditable event from a genuine non-zero side transition."""
     if previous_side == 0 or current_side == 0 or previous_side == current_side:
         return None
@@ -123,7 +200,14 @@ def derive_crossing_event(previous_side, current_side, inflip, frame_index, time
     status = "excluded" if exclusion_zone is not None else (
         "confirmed" if float(detection["confidence"]) >= conf_split else "flagged"
     )
-    return {
+    path_provenance = None
+    if path is not None:
+        path_provenance = {
+            "points": [point.to_dict() for point in path.recent_points],
+            "predictor": predictor_metadata(path, predictor),
+            "total_displacement": float(path.total_displacement),
+        }
+    event = {
         "event_id": f"crossing-{sequence:06d}", "sequence": sequence,
         "frame_index": int(frame_index), "timestamp_ms": int(timestamp_ms),
         "track_id": int(track_id), "class_id": int(detection["class_id"]),
@@ -143,32 +227,87 @@ def derive_crossing_event(previous_side, current_side, inflip, frame_index, time
                 "recovered": False,
                 "reason": "exclusion_zone" if exclusion_zone is not None else status,
             },
+            **({"path": path_provenance} if path_provenance is not None else {}),
         },
     }
+    scored = score_crossing(event, mode=scorer_mode, conf_split=conf_split,
+                            features=scorer_features, scorer_config=scorer_config)
+    event["score"] = scored["score"]
+    event["verdict"] = scored["verdict"]
+    event["score_breakdown"] = scored["score_breakdown"]
+    event["scorer"] = scored["scorer"]
+    event["feature_provenance"] = scored["feature_provenance"]
+    event["provenance"]["scorer"] = scored["scorer"]
+    event["provenance"]["feature_provenance"] = scored["feature_provenance"]
+    # Preserve the historical status in passthrough and for exclusions; fused
+    # verdicts become the event status only for non-excluded crossings.
+    if exclusion_zone is None:
+        event["status"] = scored["verdict"]
+    return event
 
 
-def summarize_events(events: list[dict]) -> dict:
-    """Summarize only emitted crossing events; excluded never counts."""
-    return {"total": len(events), "total_crossings": len(events),
-            "confirmed": sum(e["status"] == "confirmed" for e in events),
-            "flagged": sum(e["status"] == "flagged" for e in events),
-            "excluded": sum(e["status"] == "excluded" for e in events),
-            "recovered": sum(e.get("recovery") != "none" for e in events)}
+def summarize_events(events: list[dict], ground_truth: int | None = None,
+                     tolerance_pct: float | None = None) -> dict:
+    """Summarize emitted crossing events and optionally compare confirmed count to GT."""
+    summary: dict[str, object] = {
+        "total": len(events), "total_crossings": len(events),
+        "confirmed": sum(e["status"] == "confirmed" for e in events),
+        "flagged": sum(e["status"] == "flagged" for e in events),
+        "dropped": sum(e["status"] == "dropped" for e in events),
+        "excluded": sum(e["status"] == "excluded" for e in events),
+        "recovered": sum(e.get("recovery") != "none" for e in events),
+    }
+    if ground_truth is None:
+        return summary
+    if isinstance(ground_truth, bool) or not isinstance(ground_truth, int) or ground_truth < 0:
+        raise ValueError("ground_truth must be a non-negative integer or None")
+    if tolerance_pct is not None and (isinstance(tolerance_pct, bool)
+            or not isinstance(tolerance_pct, (int, float))
+            or not math.isfinite(float(tolerance_pct)) or tolerance_pct < 0):
+        raise ValueError("tolerance_pct must be a non-negative finite number or None")
+    confirmed_count = sum(e["status"] == "confirmed" for e in events)
+    error = ((confirmed_count - ground_truth) / ground_truth
+             if ground_truth else (0.0 if summary["confirmed"] == 0 else math.inf))
+    summary.update({
+        "ground_truth": ground_truth,
+        "error_vs_ground_truth": error,
+    })
+    if tolerance_pct is not None:
+        tolerance = float(tolerance_pct)
+        tolerance_state = "within" if abs(error) <= tolerance else "over" if error > 0 else "under"
+        summary.update({
+            "tolerance_pct": tolerance,
+            "tolerance_state": tolerance_state,
+            "within_tolerance": tolerance_state == "within",
+            "over_tolerance": tolerance_state == "over",
+            "under_tolerance": tolerance_state == "under",
+        })
+    return summary
 
 
 class CentroidTracker:
     """Greedy nearest-centroid tracker. A track expires after ``track_buffer`` frames."""
-    def __init__(self, track_buffer=30, match_distance_px=25.0, cooldown_frames=120):
+    def __init__(self, track_buffer=30, match_distance_px=25.0, cooldown_frames=120,
+                 hist_len=8, predictor="quadratic", trace_full=False,
+                 scorer_mode="passthrough", scorer_config=None):
         self.track_buffer = max(0, int(track_buffer)); self.match_distance_px = float(match_distance_px)
         self.cooldown_frames = max(0, int(cooldown_frames)); self._tracks = {}; self._next_id = 1; self._sequence = 0
+        self.hist_len = max(1, int(hist_len)); self.predictor = str(predictor); self.trace_full = bool(trace_full)
+        self.scorer_mode = str(scorer_mode); self.scorer_config = dict(scorer_config or {})
+        self._paths: dict[int, TrackPath] = {}
 
     @property
     def active_track_ids(self):
         return sorted(self._tracks)
 
+    @property
+    def paths(self):
+        return dict(self._paths)
+
     def update(self, frame_index, detections, line, inflip, conf_split, timestamp_ms, exclusion_zones=None):
         for tid in list(self._tracks):
             if frame_index - self._tracks[tid]["last_frame"] > self.track_buffer:
+                self._paths[tid].mark_lost()
                 del self._tracks[tid]
         unmatched = set(range(len(detections))); assignments = {}
         candidates = sorted((math.dist(self._tracks[tid]["centroid"], detections[i]["centroid"]), tid, i)
@@ -181,12 +320,21 @@ class CentroidTracker:
         events = []
         for i, detection in enumerate(detections):
             tid = assignments[i]; old = self._tracks.get(tid)
+            path = self._paths.get(tid)
+            if path is None:
+                path = TrackPath(tid, detection["class_id"], self.hist_len, self.trace_full)
+                self._paths[tid] = path
+            path.append(PathPoint(frame=int(frame_index), t_ms=int(timestamp_ms),
+                                  cx=float(detection["centroid"][0]), cy=float(detection["centroid"][1]),
+                                  conf=float(detection["confidence"])))
             previous_side = old["side"] if old else 0
             current_side = side_of_line(detection["centroid"], line) if line else 0
             if current_side == 0: current_side = previous_side
             zone = next((z for z in (exclusion_zones or []) if z["enabled"] and point_in_polygon(detection["centroid"], z["points"])), None)
             event = derive_crossing_event(previous_side, current_side, inflip, frame_index,
-                                          timestamp_ms, tid, detection, zone, conf_split, self._sequence + 1)
+                                          timestamp_ms, tid, detection, zone, conf_split, self._sequence + 1,
+                                          path=path, predictor=self.predictor,
+                                          scorer_mode=self.scorer_mode, scorer_config=self.scorer_config)
             if event and (old is None or frame_index - old.get("last_event_frame", -10**9) >= self.cooldown_frames):
                 self._sequence += 1; event["event_id"] = f"crossing-{self._sequence:06d}"; event["sequence"] = self._sequence
                 events.append(event)
@@ -310,8 +458,12 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
     line = validate_line(cfg.line, w, h)
     exclusion_zones = validate_exclusion_zones(cfg.exclusion_zones, w, h)
     match_distance = max(float(cfg.roi_dedup_px), 50.0 * max(0.0, 1.0 - float(cfg.match_thresh)))
-    tracker = CentroidTracker(cfg.track_buffer, match_distance,
-                              max(cfg.count_cooldown_frames, cfg.roi_dedup_frames)) if line else None
+    tracker = CentroidTracker(
+        cfg.track_buffer, match_distance,
+        max(cfg.count_cooldown_frames, cfg.roi_dedup_frames),
+        hist_len=cfg.hist_len, predictor=cfg.predictor, trace_full=cfg.trace_full,
+        scorer_mode=cfg.scorer_mode, scorer_config=cfg.scorer_config,
+    ) if line else None
     events = []
 
     raw_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
@@ -388,15 +540,17 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
         detail = ffmpeg.stderr.decode(errors="replace").strip().splitlines()[-1] if ffmpeg.stderr else "unknown ffmpeg error"
         raise ValueError(f"ffmpeg encoding failed: {detail}")
 
+    summary = summarize_events(events, cfg.ground_truth, cfg.tolerance_pct) if line else {}
     return LabResult(
         output_video=out,
         frames_processed=n_written,
         frames_total=total,
         max_sack_per_frame=max_sack,
         avg_sack_per_frame=round(sum_sack / max(1, n_written), 2),
-        confirmed=summarize_events(events)["confirmed"] if line else None,
-        flagged=summarize_events(events)["flagged"] if line else None,
-        recovered=0 if line else None,
+        confirmed=summary["confirmed"] if line else None,
+        flagged=summary["flagged"] if line else None,
+        recovered=summary["recovered"] if line else None,
         per_crossing=events if line else [], events=events if line else [],
-        summary=summarize_events(events) if line else {}, config=asdict(cfg),
+        summary=summary, config=asdict(cfg), video_width=w, video_height=h,
+        fps=float(fps), frame_count=total,
     )
