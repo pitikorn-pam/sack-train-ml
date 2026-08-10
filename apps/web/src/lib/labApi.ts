@@ -122,6 +122,19 @@ export type LabCapabilities = {
   path?: boolean;
 };
 
+/** A persisted event row emitted by the backend manifest. Optional fields keep this client
+ * compatible with contract revisions while preserving the rule that identity is backend-owned. */
+export type EventRecord = {
+  event_id: string;
+  frame_index: number;
+  track_id: number | string | null;
+  direction: string;
+  status: string;
+  recovery: string;
+  detection_conf: number | null;
+  decision?: Record<string, unknown> | null;
+};
+
 export type LabSummary = {
   confirmed: number;
   flagged: number;
@@ -162,18 +175,37 @@ export type RunManifest = {
   config_snapshot?: Record<string, unknown>;
   counts?: {
     summary?: Record<string, unknown> | null;
-    events?: { count?: number; event_ids?: string[]; provenance_fields?: string[] };
+    events?: {
+      count?: number;
+      event_ids?: string[];
+      provenance_fields?: string[];
+      /** Backend-owned event identity and decision fields. Never synthesize these in the UI. */
+      event_records?: EventRecord[];
+    };
   };
   output?: { video_id?: string; video_url?: string };
 };
 
 export type RunMetricKey = "confirmed" | "flagged" | "recovered" | "excluded" | "total";
 export type RunMetricDelta = { key: RunMetricKey; baseline: number; current: number; delta: number };
+export type EventRecordChange = {
+  eventId: string;
+  changedFields: string[];
+  baseline: EventRecord;
+  current: EventRecord;
+};
+export type EventRecordDiff = {
+  locked: boolean;
+  addedIds: string[];
+  removedIds: string[];
+  changedRecords: EventRecordChange[];
+};
 export type RunCompare = {
   baselineId: string;
   currentId: string;
   changedConfigKeys: string[];
   metricDeltas: RunMetricDelta[];
+  eventDiff: EventRecordDiff;
 };
 
 const REPLAY_CONFIG_KEYS: ReadonlySet<keyof LabConfig> = new Set([
@@ -204,6 +236,33 @@ export function replayConfigFromManifest(manifest: RunManifest): Partial<LabConf
   })) as Partial<LabConfig>;
 }
 
+function compareEventRecords(baseline: RunManifest, current: RunManifest): EventRecordDiff {
+  const baselineRecords = baseline.counts?.events?.event_records;
+  const currentRecords = current.counts?.events?.event_records;
+  if (!Array.isArray(baselineRecords) || !Array.isArray(currentRecords)) {
+    return { locked: true, addedIds: [], removedIds: [], changedRecords: [] };
+  }
+  const baselineById = new Map(baselineRecords.map((record) => [record.event_id, record]));
+  const currentById = new Map(currentRecords.map((record) => [record.event_id, record]));
+  const addedIds = currentRecords.map((record) => record.event_id).filter((id) => !baselineById.has(id));
+  const removedIds = baselineRecords.map((record) => record.event_id).filter((id) => !currentById.has(id));
+  const changedRecords = currentRecords.flatMap((currentRecord) => {
+    const baselineRecord = baselineById.get(currentRecord.event_id);
+    if (!baselineRecord) return [];
+    const changedFields: string[] = (["frame_index", "track_id", "direction", "status", "recovery", "detection_conf"] as const)
+      .filter((key) => jsonValue(baselineRecord[key]) !== jsonValue(currentRecord[key]));
+    const decisionKeys = new Set([
+      ...Object.keys(baselineRecord.decision ?? {}),
+      ...Object.keys(currentRecord.decision ?? {}),
+    ]);
+    decisionKeys.forEach((key) => {
+      if (jsonValue(baselineRecord.decision?.[key]) !== jsonValue(currentRecord.decision?.[key])) changedFields.push(`decision.${key}`);
+    });
+    return changedFields.length ? [{ eventId: currentRecord.event_id, changedFields, baseline: baselineRecord, current: currentRecord }] : [];
+  });
+  return { locked: false, addedIds, removedIds, changedRecords };
+}
+
 export function compareRunManifests(baseline: RunManifest, current: RunManifest): RunCompare {
   const baselineConfig = manifestConfig(baseline);
   const currentConfig = manifestConfig(current);
@@ -215,7 +274,7 @@ export function compareRunManifests(baseline: RunManifest, current: RunManifest)
     .map((key) => [key, numericMetric(baselineSummary, key), numericMetric(currentSummary, key)] as const)
     .filter((entry): entry is readonly [RunMetricKey, number, number] => entry[1] !== null && entry[2] !== null)
     .map(([key, baselineValue, currentValue]) => ({ key, baseline: baselineValue, current: currentValue, delta: currentValue - baselineValue }));
-  return { baselineId: baseline.run_id, currentId: current.run_id, changedConfigKeys, metricDeltas };
+  return { baselineId: baseline.run_id, currentId: current.run_id, changedConfigKeys, metricDeltas, eventDiff: compareEventRecords(baseline, current) };
 }
 
 /** Backend-owned persisted runs. An empty response is a truthful empty history. */

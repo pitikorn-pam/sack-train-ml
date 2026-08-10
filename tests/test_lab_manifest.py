@@ -1,6 +1,7 @@
 """Focused contract tests for truthful Lab run manifests."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -44,5 +45,79 @@ def test_manifest_contains_real_provenance_and_no_absolute_paths():
     assert manifest["input"]["sha256"] == "b" * 64
     assert manifest["model"]["identifier"] == "models/model.pt"
     assert manifest["counts"]["events"]["event_ids"] == ["crossing-000001"]
+    assert manifest["counts"]["events"]["event_records"] == [{
+        "event_id": "crossing-000001",
+        "frame_index": None,
+        "track_id": None,
+        "direction": None,
+        "status": None,
+        "recovery": None,
+        "detection_conf": None,
+        "provenance": {
+            "raw_conf": None,
+            "dedup_hit": None,
+            "cooldown_hit": None,
+            "exclusion_hit": None,
+            "recovered": None,
+            "reason": None,
+        },
+    }]
     assert manifest["output"]["video_id"] == "video-1"
     assert "/private/local" not in repr(manifest)
+
+
+def test_manifest_event_records_are_truthful_bounded_and_json_safe():
+    event = {
+        "event_id": "crossing-000001",
+        "frame_index": 42,
+        "track_id": 7,
+        "direction": "in",
+        "status": "confirmed",
+        "recovery": "none",
+        "detection_conf": 0.91,
+        "provenance": {
+            "decision": {
+                "raw_conf": 0.91,
+                "dedup_hit": False,
+                "cooldown_hit": False,
+                "exclusion_hit": False,
+                "recovered": False,
+                "reason": "confirmed",
+                "secret": "do-not-copy",
+            },
+            "path": {"points": [{"x": i, "y": i} for i in range(10000)]},
+        },
+    }
+    result = lab_core.LabResult(events=[event] * 1201)
+    manifest = build_run_manifest(
+        run_id="run-1", created_at="2026-08-10T00:00:00Z", result=result,
+        config={}, model_identifier="models/model.pt", model_sha256=None,
+        model_size_bytes=None, input_filename=None, input_sha256=None,
+        video_id="video-1", video_url="/api/lab/video/video-1",
+    )
+
+    records = manifest["counts"]["events"]["event_records"]
+    assert len(records) <= 1000
+    assert records[0] == {
+        "event_id": "crossing-000001", "frame_index": 42, "track_id": 7,
+        "direction": "in", "status": "confirmed", "recovery": "none",
+        "detection_conf": 0.91,
+        "provenance": {
+            "raw_conf": 0.91, "dedup_hit": False, "cooldown_hit": False,
+            "exclusion_hit": False, "recovered": False, "reason": "confirmed",
+        },
+    }
+    assert "secret" not in repr(records)
+    assert "points" not in repr(records)
+    json.dumps(manifest, allow_nan=False)
+
+
+def test_manifest_detection_only_run_has_no_event_records():
+    manifest = build_run_manifest(
+        run_id="run-detection-only", created_at="2026-08-10T00:00:00Z",
+        result=lab_core.LabResult(summary={"total": 0}), config={},
+        model_identifier="models/model.pt", model_sha256=None, model_size_bytes=None,
+        input_filename=None, input_sha256=None, video_id="video-1", video_url="",
+    )
+    assert manifest["counts"]["events"]["count"] == 0
+    assert manifest["counts"]["events"]["event_records"] == []

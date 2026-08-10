@@ -42,6 +42,7 @@ _RUN_HISTORY: dict[str, dict] = {}  # bounded, process-local truthful history
 MAX_RUN_HISTORY = 100
 RUN_SCHEMA_VERSION = "lab.v1"
 MAX_JOB_STORE = 100
+MAX_MANIFEST_EVENT_RECORDS = 1000
 _JOB_STORE: OrderedDict[str, dict] = OrderedDict()
 _JOB_LOCK = threading.RLock()
 
@@ -158,6 +159,40 @@ def _sha256_file(path: str | Path) -> str | None:
     return digest.hexdigest()
 
 
+def _manifest_scalar(value: object) -> object:
+    """Keep event reference values JSON-safe and free of path-like payloads."""
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        if value.startswith(("/", "~", "file://")):
+            return "<redacted>"
+        return value[:256]
+    return None
+
+
+def _manifest_event_record(event: dict) -> dict:
+    """Select only bounded, scalar event identity and decision provenance."""
+    provenance = event.get("provenance") or {}
+    decision = provenance.get("decision") or {}
+    return {
+        key: _manifest_scalar(event.get(key))
+        for key in (
+            "event_id", "frame_index", "track_id", "direction", "status",
+            "recovery", "detection_conf",
+        )
+    } | {
+        "provenance": {
+            key: _manifest_scalar(decision.get(key))
+            for key in (
+                "raw_conf", "dedup_hit", "cooldown_hit", "exclusion_hit",
+                "recovered", "reason",
+            )
+        },
+    }
+
+
 def build_run_manifest(*, run_id: str, created_at: str, result: lab_core.LabResult,
                        config: dict, model_identifier: str, model_sha256: str | None,
                        model_size_bytes: int | None, input_filename: str | None,
@@ -192,6 +227,11 @@ def build_run_manifest(*, run_id: str, created_at: str, result: lab_core.LabResu
             "events": {
                 "count": len(events),
                 "event_ids": [event.get("event_id") for event in events],
+                "event_records": [
+                    _manifest_event_record(event)
+                    for event in events[:MAX_MANIFEST_EVENT_RECORDS]
+                    if isinstance(event, dict)
+                ],
                 "provenance_fields": sorted({key for event in events for key in (event.get("provenance") or {})}),
             },
         },
