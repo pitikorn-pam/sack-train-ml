@@ -14,7 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -45,6 +47,141 @@ MAX_JOB_STORE = 100
 MAX_MANIFEST_EVENT_RECORDS = 1000
 _JOB_STORE: OrderedDict[str, dict] = OrderedDict()
 _JOB_LOCK = threading.RLock()
+
+TASK_STATUSES = {"draft", "active", "archived"}
+MAX_TASK_NAME = 200
+MAX_TASK_DESCRIPTION = 5000
+MAX_TASK_LIST_ITEMS = 100
+MAX_TASK_ID_LENGTH = 128
+_TASK_DB_DEFAULT = _ROOT / "runs" / "lab_tasks.sqlite3"
+
+
+def _task_db_path() -> Path:
+    return Path(os.environ.get("LAB_TASKS_DB", str(_TASK_DB_DEFAULT))).expanduser()
+
+
+def _task_connection() -> sqlite3.Connection:
+    path = _task_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path, timeout=10)
+    connection.row_factory = sqlite3.Row
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS lab_tasks (
+            task_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'archived')),
+            config_json TEXT NOT NULL,
+            source_json TEXT NOT NULL,
+            model_json TEXT NOT NULL,
+            run_ids_json TEXT NOT NULL,
+            latest_run_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    connection.commit()
+    return connection
+
+
+def _sanitize_task_value(value: object, *, _depth: int = 0) -> object:
+    """Bound JSON metadata and remove secrets, bytes, and local filesystem paths."""
+    if _depth > 8:
+        return "<redacted>"
+    secret_words = ("secret", "password", "token", "api_key", "apikey", "credential")
+    if isinstance(value, dict):
+        result = {}
+        for key, item in list(value.items())[:100]:
+            key_text = str(key)
+            if key_text.lower() in {"bytes", "content", "file_bytes", "uploaded_file"}:
+                continue
+            if any(word in key_text.lower() for word in secret_words):
+                result[key_text] = "<redacted>"
+            elif isinstance(item, (bytes, bytearray, memoryview)):
+                result[key_text] = "<redacted>"
+            else:
+                result[key_text] = _sanitize_task_value(item, _depth=_depth + 1)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_task_value(item, _depth=_depth + 1) for item in list(value)[:MAX_TASK_LIST_ITEMS]]
+    if isinstance(value, (bytes, bytearray, memoryview, Path)):
+        return "<redacted>"
+    if isinstance(value, str):
+        if value.startswith(("/", "~", "file://")) or re.match(r"^[A-Za-z]:[\\/]", value):
+            return "<redacted>"
+        return value[:1000]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:1000]
+
+
+def _task_json(value: object) -> str:
+    return json.dumps(_sanitize_task_value(value), separators=(",", ":"), allow_nan=False)
+
+
+def _task_from_row(row: sqlite3.Row) -> dict:
+    return {
+        "task_id": row["task_id"], "name": row["name"], "description": row["description"],
+        "status": row["status"], "config": json.loads(row["config_json"]),
+        "source": json.loads(row["source_json"]), "model": json.loads(row["model_json"]),
+        "run_ids": json.loads(row["run_ids_json"]), "latest_run_id": row["latest_run_id"],
+        "created_at": row["created_at"], "updated_at": row["updated_at"],
+    }
+
+
+def _validate_task_payload(payload: object, *, partial: bool = False) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="task payload must be a JSON object")
+    allowed = {"name", "description", "status", "config", "source", "model", "run_ids", "latest_run_id"}
+    result = {key: payload[key] for key in allowed if key in payload}
+    if not partial and not isinstance(result.get("name"), str):
+        raise HTTPException(status_code=422, detail="name must be a non-empty string")
+    if "name" in result:
+        result["name"] = result["name"].strip()
+        if not result["name"] or len(result["name"]) > MAX_TASK_NAME:
+            raise HTTPException(status_code=422, detail="name must be 1-200 characters")
+    if "description" in result:
+        if not isinstance(result["description"], str) or len(result["description"]) > MAX_TASK_DESCRIPTION:
+            raise HTTPException(status_code=422, detail="description must be at most 5000 characters")
+    if "status" in result and result["status"] not in TASK_STATUSES:
+        raise HTTPException(status_code=422, detail="status must be draft, active, or archived")
+    for field in ("config", "source", "model"):
+        if field in result and not isinstance(result[field], dict):
+            raise HTTPException(status_code=422, detail=f"{field} must be a JSON object")
+    if "run_ids" in result:
+        if not isinstance(result["run_ids"], list) or len(result["run_ids"]) > MAX_TASK_LIST_ITEMS:
+            raise HTTPException(status_code=422, detail="run_ids must be a bounded list")
+        if any(not isinstance(item, str) or not item or len(item) > MAX_TASK_ID_LENGTH for item in result["run_ids"]):
+            raise HTTPException(status_code=422, detail="run_ids must contain bounded strings")
+    if "latest_run_id" in result and result["latest_run_id"] is not None:
+        if not isinstance(result["latest_run_id"], str) or len(result["latest_run_id"]) > MAX_TASK_ID_LENGTH:
+            raise HTTPException(status_code=422, detail="latest_run_id must be a bounded string")
+    return result
+
+
+def _get_task(task_id: str) -> dict:
+    with _task_connection() as connection:
+        row = connection.execute("SELECT * FROM lab_tasks WHERE task_id = ?", (task_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return _task_from_row(row)
+
+
+def _associate_run(task_id: str | None, run_id: str) -> None:
+    if not task_id:
+        return
+    with _task_connection() as connection:
+        row = connection.execute("SELECT run_ids_json FROM lab_tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row is None:
+            return
+        run_ids = json.loads(row["run_ids_json"])
+        if run_id not in run_ids:
+            run_ids.append(run_id)
+        run_ids = run_ids[-MAX_TASK_LIST_ITEMS:]
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        connection.execute("UPDATE lab_tasks SET run_ids_json = ?, latest_run_id = ?, updated_at = ? WHERE task_id = ?",
+                           (_task_json(run_ids), run_id, now, task_id))
+        connection.commit()
 
 # Upload limits are enforced while streaming to disk, rather than after reading
 # the whole multipart part into memory.  The model limit is intentionally
@@ -409,7 +546,7 @@ async def _prepare_inference(video: UploadFile, config: str, model: UploadFile |
 
 def _store_result(result: lab_core.LabResult, *, cfg: lab_core.LabConfig,
                   model_metadata: dict, input_filename: str | None,
-                  input_sha256: str | None) -> dict:
+                  input_sha256: str | None, task_id: str | None = None) -> dict:
     vid = uuid.uuid4().hex
     _VIDEO_STORE[vid] = result.output_video
     run_id = uuid.uuid4().hex
@@ -431,6 +568,7 @@ def _store_result(result: lab_core.LabResult, *, cfg: lab_core.LabConfig,
                     "video_url": f"/api/lab/video/{vid}", "run_id": run_id,
                     "schema_version": RUN_SCHEMA_VERSION, "manifest": manifest})
     payload.update({key: value for key, value in model_metadata.items() if key != "model_filename"})
+    _associate_run(task_id, run_id)
     return payload
 
 
@@ -450,6 +588,60 @@ def health():
     }
 
 
+@app.post("/api/lab/tasks", status_code=201)
+def create_task(payload: dict):
+    values = _validate_task_payload(payload)
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    task_id = str(uuid.uuid4())
+    row = {
+        "task_id": task_id, "name": values["name"], "description": values.get("description", ""),
+        "status": values.get("status", "draft"), "config": values.get("config", {}),
+        "source": values.get("source", {}), "model": values.get("model", {}),
+        "run_ids": values.get("run_ids", []), "latest_run_id": values.get("latest_run_id"),
+    }
+    with _task_connection() as connection:
+        connection.execute("""INSERT INTO lab_tasks
+            (task_id, name, description, status, config_json, source_json, model_json,
+             run_ids_json, latest_run_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                task_id, row["name"], row["description"], row["status"], _task_json(row["config"]),
+                _task_json(row["source"]), _task_json(row["model"]), _task_json(row["run_ids"]),
+                row["latest_run_id"], now, now))
+        connection.commit()
+    return _get_task(task_id)
+
+
+@app.get("/api/lab/tasks")
+def list_tasks():
+    with _task_connection() as connection:
+        rows = connection.execute("SELECT * FROM lab_tasks ORDER BY updated_at DESC, created_at DESC").fetchall()
+    return {"tasks": [_task_from_row(row) for row in rows]}
+
+
+@app.get("/api/lab/tasks/{task_id}")
+def get_task(task_id: str):
+    return _get_task(task_id)
+
+
+@app.patch("/api/lab/tasks/{task_id}")
+def update_task(task_id: str, payload: dict):
+    current = _get_task(task_id)
+    values = _validate_task_payload(payload, partial=True)
+    if not values:
+        raise HTTPException(status_code=422, detail="task patch must not be empty")
+    merged = {**current, **values}
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    with _task_connection() as connection:
+        connection.execute("""UPDATE lab_tasks SET name = ?, description = ?, status = ?,
+            config_json = ?, source_json = ?, model_json = ?, run_ids_json = ?,
+            latest_run_id = ?, updated_at = ? WHERE task_id = ?""", (
+                merged["name"], merged["description"], merged["status"], _task_json(merged["config"]),
+                _task_json(merged["source"]), _task_json(merged["model"]), _task_json(merged["run_ids"]),
+                merged["latest_run_id"], now, task_id))
+        connection.commit()
+    return _get_task(task_id)
+
+
 @app.get("/api/lab/models")
 def models():
     model_ids = [_model_id(path) for path in lab_core.list_models()]
@@ -462,6 +654,7 @@ def models():
 async def infer(
     video: UploadFile = File(...),
     config: str = Form("{}"),
+    task_id: str | None = Form(None),
     model: UploadFile | None = File(None),
 ):
     """Run Lab inference using the legacy configured model or an uploaded .pt."""
@@ -473,7 +666,8 @@ async def infer(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
         return JSONResponse(_store_result(result, cfg=cfg, model_metadata=model_metadata,
-                                           input_filename=video.filename, input_sha256=input_sha256))
+                                           input_filename=video.filename, input_sha256=input_sha256,
+                                           task_id=task_id))
     finally:
         if in_path is not None:
             Path(in_path).unlink(missing_ok=True)
@@ -483,12 +677,14 @@ async def infer(
 
 def _run_job(job_id: str, *, in_path: str, model_path: str | None,
              cfg: lab_core.LabConfig, model_metadata: dict,
-             input_filename: str | None, input_sha256: str | None) -> None:
+             input_filename: str | None, input_sha256: str | None,
+             task_id: str | None) -> None:
     _update_job_progress(job_id, 0.0, "running")
     try:
         result = lab_core.run_inference(in_path, cfg, progress=lambda p, msg: _update_job_progress(job_id, p, msg))
         payload = _store_result(result, cfg=cfg, model_metadata=model_metadata,
-                                input_filename=input_filename, input_sha256=input_sha256)
+                                input_filename=input_filename, input_sha256=input_sha256,
+                                task_id=task_id)
         _finish_job(job_id, status="succeeded", result=payload,
                     processed_frames=result.frames_processed, total_frames=result.frames_total)
     except Exception as exc:
@@ -503,6 +699,7 @@ def _run_job(job_id: str, *, in_path: str, model_path: str | None,
 async def infer_job(
     video: UploadFile = File(...),
     config: str = Form("{}"),
+    task_id: str | None = Form(None),
     model: UploadFile | None = File(None),
 ):
     """Queue inference and return a process-local polling handle."""
@@ -517,7 +714,7 @@ async def infer_job(
     asyncio.create_task(asyncio.to_thread(
         _run_job, job["job_id"], in_path=in_path, model_path=model_path,
         cfg=cfg, model_metadata=model_metadata, input_filename=video.filename,
-        input_sha256=input_sha256))
+        input_sha256=input_sha256, task_id=task_id))
     return _job_status_payload(job)
 
 
@@ -539,10 +736,15 @@ def get_video(video_id: str):
 
 
 @app.get("/api/lab/runs")
-def runs():
-    """List manifests retained by this process; no durable history is claimed."""
+def runs(task_id: str | None = None):
+    """List process-local manifests, optionally scoped to a durable LabTask."""
+    manifests = list(reversed(list(_RUN_HISTORY.values())))
+    if task_id:
+        task = _get_task(task_id)
+        allowed = set(task["run_ids"])
+        manifests = [manifest for manifest in manifests if manifest.get("run_id") in allowed]
     return {"schema_version": RUN_SCHEMA_VERSION, "persistent": False,
-            "runs": list(reversed(list(_RUN_HISTORY.values())))}
+            "task_id": task_id, "runs": manifests}
 
 
 if __name__ == "__main__":

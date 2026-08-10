@@ -416,6 +416,23 @@ export type LabJobStart = {
   status?: LabJobState;
 };
 
+/** Backend-owned saved replay task. File objects are intentionally not persisted. */
+export type LabTask = {
+  task_id: string;
+  name: string;
+  description?: string | null;
+  config?: LabConfig | null;
+  source?: Record<string, unknown> | null;
+  model?: Record<string, unknown> | null;
+  run_ids?: string[];
+  latest_run_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  status?: string;
+};
+export type LabTaskInput = { name: string; description?: string };
+export type LabTaskUpdate = { config?: LabConfig; source?: Record<string, unknown>; model?: Record<string, unknown>; description?: string; status?: string };
+
 /** Signals that the optional async endpoint is not deployed; callers may use the legacy sync endpoint. */
 export class LabJobEndpointUnavailable extends Error {
   constructor() {
@@ -442,8 +459,9 @@ export async function labModels(): Promise<LabModels> {
   return r.json();
 }
 
-export async function labRuns(): Promise<RunHistoryResponse> {
-  const r = await fetch("/api/lab/runs");
+export async function labRuns(taskId?: string): Promise<RunHistoryResponse> {
+  const query = taskId ? `?task_id=${encodeURIComponent(taskId)}` : "";
+  const r = await fetch(`/api/lab/runs${query}`);
   if (!r.ok) throw new Error(`run history unavailable (${r.status})`);
   const payload: unknown = await r.json();
   if (Array.isArray(payload)) return { runs: payload as RunManifest[] };
@@ -453,11 +471,39 @@ export async function labRuns(): Promise<RunHistoryResponse> {
   return payload as RunHistoryResponse;
 }
 
-function replayForm(video: File, config: LabConfig, modelFile?: File): FormData {
+async function taskResponse(response: Response): Promise<LabTask> {
+  if (!response.ok) {
+    const detail = await responseDetail(response);
+    throw new Error(`task request failed (${response.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const payload: unknown = await response.json();
+  const task = payload && typeof payload === "object" && "task" in payload ? (payload as { task: unknown }).task : payload;
+  if (!task || typeof task !== "object" || typeof (task as { task_id?: unknown }).task_id !== "string") throw new Error("task response did not include a task_id");
+  return task as LabTask;
+}
+
+export async function labTasks(): Promise<LabTask[]> {
+  const response = await fetch("/api/lab/tasks");
+  if (!response.ok) { const detail = await responseDetail(response); throw new Error(`tasks unavailable (${response.status})${detail ? `: ${detail}` : ""}`); }
+  const payload: unknown = await response.json();
+  const tasks = Array.isArray(payload) ? payload : payload && typeof payload === "object" && Array.isArray((payload as { tasks?: unknown }).tasks) ? (payload as { tasks: LabTask[] }).tasks : null;
+  if (!tasks) throw new Error("tasks response has no tasks array");
+  return tasks;
+}
+export async function labTask(taskId: string): Promise<LabTask> { return taskResponse(await fetch(`/api/lab/tasks/${encodeURIComponent(taskId)}`)); }
+export async function createLabTask(input: LabTaskInput): Promise<LabTask> {
+  return taskResponse(await fetch("/api/lab/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }));
+}
+export async function updateLabTask(taskId: string, input: LabTaskUpdate): Promise<LabTask> {
+  return taskResponse(await fetch(`/api/lab/tasks/${encodeURIComponent(taskId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }));
+}
+
+function replayForm(video: File, config: LabConfig, modelFile?: File, taskId?: string): FormData {
   const fd = new FormData();
   fd.append("video", video);
   fd.append("config", JSON.stringify(config));
   if (modelFile) fd.append("model", modelFile, modelFile.name);
+  if (taskId) fd.append("task_id", taskId);
   return fd;
 }
 
@@ -469,8 +515,8 @@ async function responseDetail(response: Response): Promise<string> {
   } catch { return ""; }
 }
 
-export async function startInferJob(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal): Promise<LabJobStart> {
-  const response = await fetch("/api/lab/infer/jobs", { method: "POST", body: replayForm(video, config, modelFile), signal });
+export async function startInferJob(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal, taskId?: string): Promise<LabJobStart> {
+  const response = await fetch("/api/lab/infer/jobs", { method: "POST", body: replayForm(video, config, modelFile, taskId), signal });
   if (response.status === 404 || response.status === 405) throw new LabJobEndpointUnavailable();
   if (!response.ok) {
     const detail = await responseDetail(response);
@@ -496,8 +542,8 @@ export async function getInferJob(jobId: string, signal?: AbortSignal): Promise<
   return { job_id: jobId, ...(payload as Omit<LabJobStatus, "job_id">) };
 }
 
-export async function runInfer(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal): Promise<LabResult> {
-  const response = await fetch("/api/lab/infer", { method: "POST", body: replayForm(video, config, modelFile), signal });
+export async function runInfer(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal, taskId?: string): Promise<LabResult> {
+  const response = await fetch("/api/lab/infer", { method: "POST", body: replayForm(video, config, modelFile, taskId), signal });
   if (!response.ok) {
     const detail = await responseDetail(response);
     throw new Error(`inference failed (${response.status})${detail ? `: ${detail}` : ""}`);

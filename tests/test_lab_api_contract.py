@@ -133,6 +133,19 @@ def test_runs_has_explicit_process_local_persistence_envelope(client):
     assert isinstance(payload["runs"], list)
 
 
+def test_runs_endpoint_scopes_to_existing_task(client):
+    task = client.post("/api/lab/tasks", json={"name": "Scoped history"}).json()
+    response = client.get(f"/api/lab/runs?task_id={task['task_id']}")
+    assert response.status_code == 200
+    assert response.json()["task_id"] == task["task_id"]
+    assert response.json()["runs"] == []
+
+
+def test_runs_endpoint_rejects_unknown_task(client):
+    response = client.get("/api/lab/runs?task_id=missing-task")
+    assert response.status_code == 404
+
+
 def test_detection_only_result_keeps_counting_fields_null_without_line():
     result = lab_core.LabResult(
         frames_processed=3,

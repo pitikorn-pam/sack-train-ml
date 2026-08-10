@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import {
   AlertTriangle, ChevronDown, ChevronRight, Download, FlaskConical, GitBranch,
   Layers3, Play, RotateCcw, Trash2, Upload, X,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
-  compareRunManifests, getInferJob, labHealth, labModels, labRuns, LabJobEndpointUnavailable, manifestConfig as getManifestConfig, replayConfigFromManifest,
-  runInfer, startInferJob, type DetectionConfidenceBin, type ExclusionZone, type LabCapabilities, type LabConfig, type LabHealth, type LabJobStatus, type LabResult, type Point, type RunManifest,
+  compareRunManifests, createLabTask, getInferJob, labHealth, labModels, labRuns, labTask, labTasks, LabJobEndpointUnavailable, manifestConfig as getManifestConfig, replayConfigFromManifest, updateLabTask,
+  runInfer, startInferJob, type DetectionConfidenceBin, type ExclusionZone, type LabCapabilities, type LabConfig, type LabHealth, type LabJobStatus, type LabResult, type LabTask, type Point, type RunManifest,
   type ScorerMode, type ScorerVerdict,
 } from "../lib/labApi";
 
@@ -107,6 +107,15 @@ function verdictLabel(verdict: ScorerVerdict | undefined): string { return verdi
 
 export function Lab() {
   const [cfg, setCfg] = useState<LabConfig>(DEFAULT_CFG);
+  const [tasks, setTasks] = useState<LabTask[] | null>(null);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [taskName, setTaskName] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
@@ -197,7 +206,52 @@ export function Lab() {
 
   useEffect(() => {
     let cancelled = false;
-    labRuns().then((response) => {
+    labTasks().then((items) => {
+      if (cancelled) return;
+      setTasks(items);
+      if (items[0]) setSelectedTaskId((current) => current || items[0].task_id);
+    }).catch((error) => { if (!cancelled) setTasksError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { if (!cancelled) setTasksLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function loadTask(taskId: string) {
+    if (!taskId) return;
+    setSelectedTaskId(taskId); setTaskMessage(null); setResult(null);
+    try {
+      const task = await labTask(taskId);
+      setTasks((items) => items ? items.map((item) => item.task_id === task.task_id ? task : item) : [task]);
+      if (task.config) { setCfg((current) => ({ ...current, ...task.config })); if (Array.isArray(task.config.exclusion_zones)) setZones(task.config.exclusion_zones); }
+      await refreshRunHistory(taskId);
+    } catch (error) { setTaskMessage(error instanceof Error ? error.message : String(error)); }
+  }
+  async function saveNewTask(event: FormEvent) {
+    event.preventDefault();
+    if (!taskName.trim()) return;
+    setTaskSaving(true); setTaskMessage(null);
+    try {
+      const task = await createLabTask({ name: taskName.trim(), description: taskDescription.trim() || undefined });
+      setTasks((items) => [task, ...(items ?? [])]); setSelectedTaskId(task.task_id); setTaskFormOpen(false); setTaskName(""); setTaskDescription(""); setTaskMessage("Task created. Save its configuration when ready.");
+    } catch (error) { setTaskMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setTaskSaving(false); }
+  }
+  async function saveTask() {
+    if (!selectedTaskId) return;
+    setTaskSaving(true); setTaskMessage(null);
+    try {
+      const task = await updateLabTask(selectedTaskId, {
+        config: { ...cfg, exclusion_zones: zones },
+        source: { filename: video?.name ?? null, video_attached: !!video, width: videoSize?.width ?? null, height: videoSize?.height ?? null, fps: videoFps ?? null },
+        model: { identifier: selectedRegistry?.id ?? (legacyModel || null), filename: localModel?.name ?? null, model_attached: modelReady },
+      });
+      setTasks((items) => items ? items.map((item) => item.task_id === task.task_id ? task : item) : [task]); setTaskMessage("Task saved.");
+    } catch (error) { setTaskMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setTaskSaving(false); }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    labRuns(selectedTaskId || undefined).then((response) => {
       if (!cancelled) setRunHistory(response.runs);
     }).catch((error) => {
       if (!cancelled) setRunHistoryError(error instanceof Error ? error.message : String(error));
@@ -205,7 +259,7 @@ export function Lab() {
       if (!cancelled) setRunHistoryLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [selectedTaskId]);
 
   useEffect(() => {
     if (!runHistory?.length) {
@@ -217,9 +271,9 @@ export function Lab() {
     setBaselineRunId((id) => id && runHistory.some((run) => run.run_id === id) ? id : runHistory[1]?.run_id ?? "");
   }, [runHistory]);
 
-  async function refreshRunHistory() {
+  async function refreshRunHistory(taskId?: string) {
     try {
-      const response = await labRuns();
+      const response = await labRuns(taskId);
       setRunHistory(response.runs);
       setRunHistoryError(null);
     } catch (error) {
@@ -361,7 +415,7 @@ export function Lab() {
     try {
       let nextResult: LabResult | null = null;
       try {
-        const job = await startInferJob(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal);
+        const job = await startInferJob(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal, selectedTaskId || undefined);
         setReplayProgressMode("server");
         setReplayStatus(job.status ?? "queued");
         let pollDelay = 500;
@@ -395,11 +449,17 @@ export function Lab() {
         if (!(error instanceof LabJobEndpointUnavailable)) throw error;
         setReplayProgressMode("estimate");
         setReplayStatus("legacy synchronous fallback");
-        nextResult = await runInfer(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal);
+        nextResult = await runInfer(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal, selectedTaskId || undefined);
       }
       if (!nextResult) throw new Error("Replay completed without a result. Retry the replay.");
       setResult(nextResult);
-      await refreshRunHistory();
+      if (selectedTaskId) {
+        try {
+          const refreshedTask = await labTask(selectedTaskId);
+          setTasks((items) => items ? items.map((item) => item.task_id === refreshedTask.task_id ? refreshedTask : item) : [refreshedTask]);
+        } catch { /* The result remains truthful even if task refresh is temporarily unavailable. */ }
+      }
+      await refreshRunHistory(selectedTaskId || undefined);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setErr(error instanceof Error ? error.message : String(error));
@@ -505,15 +565,16 @@ export function Lab() {
   return <div className="lab-shell">
     <header className="lab-topbar"><div><span className="lab-kicker">RESEARCH CONTROL ROOM / {hasSummary ? "V1 COUNTING" : "V0 DETECTION"}</span><h2><FlaskConical size={20} /> Lab Replay</h2></div><div className="lab-top-status"><span className={`lab-status-dot ${backendUp ? "up" : backendUp === false ? "down" : "checking"}`} />{backendUp ? "backend online" : backendUp === false ? "backend unavailable" : "checking backend"}<span className={`lab-chip ${events ? "lab-chip-live" : ""}`}>{events ? `${events.length} events` : "no event stream"}</span></div></header>
     {backendUp === false && <div className="lab-alert"><AlertTriangle size={16} /><span>Lab backend is unavailable. Start <code>python apps/api/lab_server.py</code> on port 8077.</span><button className="lab-button lab-button-retry" type="button" onClick={() => window.location.reload()}>Retry connection</button></div>}
+    <section className="lab-taskbar" aria-label="Replay tasks"><div className="lab-taskbar-title"><span className="lab-kicker">TASK-FIRST WORKSPACE</span><strong>{selectedTaskId ? (tasks?.find((task) => task.task_id === selectedTaskId)?.name ?? "Selected task") : "No task selected"}</strong><span className="lab-task-subtitle">Save a replay configuration and return to it later.</span></div><div className="lab-task-actions"><select aria-label="Saved task" value={selectedTaskId} onChange={(event) => loadTask(event.target.value)} disabled={tasksLoading || !tasks?.length}><option value="">{tasksLoading ? "Loading tasks…" : tasks?.length ? "Select a task" : "No saved tasks"}</option>{tasks?.map((task) => <option key={task.task_id} value={task.task_id}>{task.name}</option>)}</select><button className="lab-button lab-button-primary" type="button" onClick={() => setTaskFormOpen((open) => !open)}><FlaskConical size={14} /> New Task</button><button className="lab-button" type="button" disabled={!selectedTaskId || taskSaving} onClick={saveTask}>{taskSaving ? "Saving…" : "Save task"}</button></div>{selectedTaskId && <div className="lab-task-state"><span className="lab-chip lab-chip-live">TASK ACTIVE</span><span>{video && modelReady ? "Ready to run with current attachments." : "Reattach video and model files before running; browser files are not persisted."}</span><code>{selectedTaskId}</code></div>}{tasksError && <p className="lab-task-error">Unable to load saved tasks: {tasksError}</p>}{taskMessage && <p className="lab-task-message" role="status">{taskMessage}</p>}{taskFormOpen && <form className="lab-task-form" onSubmit={saveNewTask}><label>Task name <input autoFocus required value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="e.g. Loading bay count" /></label><label>Description <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Optional context for this replay" rows={2} /></label><div><button className="lab-button lab-button-primary" type="submit" disabled={!taskName.trim() || taskSaving}>Create task</button><button className="lab-button" type="button" onClick={() => setTaskFormOpen(false)}>Cancel</button></div></form>}</section>
     <div className="lab-workspace">
       <aside className="lab-sidebar">{sections.map((section) => <section className="lab-accordion" key={section.n}><SectionHeader section={section} onToggle={() => toggleSection(section.n)} />{section.open && <div className="lab-section-body">
-        {section.n === 1 && <><label>Source video<input type="file" accept="video/*" onChange={(e) => selectVideo(e.target.files?.[0] ?? null)} /></label><div className="lab-file-row"><span className={video ? "lab-ok" : "lab-muted"}>{video ? "READY" : "EMPTY"}</span><span>{video?.name ?? "Choose a video file"}</span></div><div className="lab-field-grid"><label>Frame start<input type="number" min="0" value={cfg.frame_start ?? 0} onChange={(e) => set("frame_start", +e.target.value)} /></label><label>Frame end<input type="number" min="0" placeholder="end" value={cfg.frame_end ?? ""} onChange={(e) => set("frame_end", e.target.value ? +e.target.value : undefined)} /></label></div><label><span>Frame stride <Hint text="Process every Nth video frame; higher values trade detail for speed." /></span><strong>{cfg.frame_stride}</strong><input type="range" min="1" max="10" value={cfg.frame_stride} onChange={(e) => set("frame_stride", +e.target.value)} /></label><div className="lab-field-grid"><label><span>GT target <Hint text="Optional human-verified count used only for backend scoring." /><em>(optional)</em></span><input type="number" min="0" step="1" placeholder="not supplied" value={cfg.ground_truth ?? ""} onChange={(e) => set("ground_truth", e.target.value === "" ? undefined : Math.max(0, Math.floor(+e.target.value)))} /></label><label><span>Tolerance <Hint text="Allowed absolute error from GT, entered as a percentage." /><em>(optional %)</em></span><input type="number" min="0" step="0.1" placeholder="not supplied" value={cfg.tolerance_pct == null ? "" : cfg.tolerance_pct * 100} onChange={(e) => set("tolerance_pct", e.target.value === "" ? undefined : Math.max(0, +e.target.value) / 100)} /></label></div><p className="lab-note">GT target is a human count for scoring. No GT or tolerance is assumed when left blank.</p><button className="lab-button lab-button-subtle" type="button" onClick={() => setCfg({ ...DEFAULT_CFG, ground_truth: undefined, tolerance_pct: undefined })}><RotateCcw size={13} /> Reset deployed defaults</button><p className="lab-note">Source state is local-only until Run Replay.</p></> }
+        {section.n === 1 && <><label className="lab-dropzone"><Upload size={16} /><span><strong>{video ? "Replace source video" : "Drop source video here"}</strong><small>MP4, WebM, or another browser-supported video</small></span><input type="file" accept="video/*" onChange={(e) => selectVideo(e.target.files?.[0] ?? null)} /></label><div className="lab-file-row"><span className={video ? "lab-ok" : "lab-muted"}>{video ? "READY" : "EMPTY"}</span><span>{video?.name ?? "No video attached"}</span></div><div className="lab-field-grid"><label>Frame start<input type="number" min="0" value={cfg.frame_start ?? 0} onChange={(e) => set("frame_start", +e.target.value)} /></label><label>Frame end<input type="number" min="0" placeholder="end" value={cfg.frame_end ?? ""} onChange={(e) => set("frame_end", e.target.value ? +e.target.value : undefined)} /></label></div><label><span>Frame stride <Hint text="Process every Nth video frame; higher values trade detail for speed." /></span><strong>{cfg.frame_stride}</strong><input type="range" min="1" max="10" value={cfg.frame_stride} onChange={(e) => set("frame_stride", +e.target.value)} /></label><div className="lab-field-grid"><label><span>GT target <Hint text="Optional human-verified count used only for backend scoring." /><em>(optional)</em></span><input type="number" min="0" step="1" placeholder="not supplied" value={cfg.ground_truth ?? ""} onChange={(e) => set("ground_truth", e.target.value === "" ? undefined : Math.max(0, Math.floor(+e.target.value)))} /></label><label><span>Tolerance <Hint text="Allowed absolute error from GT, entered as a percentage." /><em>(optional %)</em></span><input type="number" min="0" step="0.1" placeholder="not supplied" value={cfg.tolerance_pct == null ? "" : cfg.tolerance_pct * 100} onChange={(e) => set("tolerance_pct", e.target.value === "" ? undefined : Math.max(0, +e.target.value) / 100)} /></label></div><p className="lab-note">GT target is a human count for scoring. No GT or tolerance is assumed when left blank.</p><button className="lab-button lab-button-subtle" type="button" onClick={() => setCfg({ ...DEFAULT_CFG, ground_truth: undefined, tolerance_pct: undefined })}><RotateCcw size={13} /> Reset deployed defaults</button><p className="lab-note">Source state is local-only until Run Replay.</p></> }
         {section.n === 2 && <><div className="lab-model-tabs">{(["registry", "local", ...(legacyModels.length ? ["legacy"] : [])] as const).map((mode) => <button key={mode} type="button" className={modelMode === mode ? "active" : ""} onClick={() => { setModelMode(mode as "registry" | "local" | "legacy"); if (mode === "registry") setLocalModel(null); setModelError(null); }}>{mode}</button>)}</div>{modelMode === "registry" && <>{registryLoading ? <p className="lab-note">Loading model registry…</p> : registry.length ? <><label>Registry version<select value={selectedVersion} onChange={(e) => { setSelectedVersion(e.target.value); setLocalModel(null); }}><option value="">Select version</option>{registry.map((v) => <option key={v.id} value={v.id}>v{v.semver} · {v.model_line_id}</option>)}</select></label><p className="lab-note">{selectedRegistry ? `Artifact: ${selectedRegistry.artifacts?.pytorch?.key}` : "Choose a version, then fetch the signed R2 artifact."}</p><button className="lab-button" type="button" disabled={!selectedRegistry || modelBusy} onClick={downloadRegistryModel}>{modelBusy ? `Fetching model ${modelProgress}%` : <><Download size={14} /> Fetch model</>}</button></> : <p className="lab-note lab-error">{registryError ?? "No PyTorch artifacts found."}</p>}</>}{modelMode === "local" && <label>Local .pt<input type="file" accept=".pt,application/octet-stream" onChange={(e) => { const file = e.target.files?.[0] ?? null; const valid = !!file && file.name.toLowerCase().endsWith(".pt"); setLocalModel(valid ? file : null); setModelError(file && !valid ? "Choose a .pt file." : null); }} /></label>}{modelMode === "legacy" && <label>Legacy backend model<select value={legacyModel} onChange={(e) => setLegacyModel(e.target.value)}>{legacyModels.map((model) => <option key={model} value={model}>{model.split("/").pop()}</option>)}</select></label>}{localModel && <div className="lab-file-row lab-ok"><Upload size={14} /> {localModel.name} · ready</div>}{modelError && <p className="lab-error">{modelError}</p>}<label><span>Prefilter confidence <Hint text="Minimum detector confidence kept before tracking." /></span><strong>{(cfg.conf ?? 0).toFixed(2)}</strong><input type="range" min="0.05" max="0.95" step="0.05" value={cfg.conf} onChange={(e) => set("conf", +e.target.value)} /></label><label><span>NMS-IoU <Hint text="Overlap threshold for suppressing duplicate detector boxes." /></span><strong>{(cfg.iou ?? 0).toFixed(2)}</strong><input type="range" min="0.1" max="0.95" step="0.05" value={cfg.iou} onChange={(e) => set("iou", +e.target.value)} /><span className="lab-note">Editable on .pt/.onnx only; baked on HEF.</span></label><div className="lab-inline-checks"><label><input type="checkbox" checked={(cfg.classes ?? []).includes(0)} onChange={() => toggleClass(0)} /> person</label><label><input type="checkbox" checked={(cfg.classes ?? []).includes(1)} onChange={() => toggleClass(1)} /> sack</label></div></>}
 
         {section.n === 3 && <><span className="lab-capability-state">{capability("tracker") ? "TRACKER WIRED" : "TRACKER CAPABILITY REQUIRED"}</span><DisabledField><span>Tracker <Hint text="Backend tracker used to maintain object identity across frames." /></span><select disabled={!capability("tracker")} value={cfg.tracker_type ?? "bytetrack"} onChange={(e) => set("tracker_type", e.target.value)}><option value="bytetrack">ByteTrack</option></select></DisabledField><DisabledField><span>Track buffer <Hint text="Frames an unmatched track remains alive before removal." /></span><input disabled={!capability("tracker")} type="number" min="1" max="300" step="1" value={cfg.track_buffer ?? 30} onChange={(e) => set("track_buffer", Math.max(1, Math.min(300, Math.floor(Number(e.target.value) || 1))))} /></DisabledField><DisabledField><span>Match threshold <Hint text="Association threshold used to match detections to existing tracks." /></span><input disabled={!capability("tracker")} type="number" min="0" max="1" step="0.01" value={cfg.match_thresh ?? 0.7} onChange={(e) => set("match_thresh", Math.max(0, Math.min(1, Number(e.target.value) || 0)))} /></DisabledField></>}
         {section.n === 4 && <><div className="lab-line-status"><GitBranch size={14} />{cfg.line ? "canonical line ready" : "no count line"}<span>frame_ref 0</span></div><button className="lab-button lab-button-cyan" type="button" disabled={!videoSize} onClick={() => { setDrawMode("line"); setDraftPoints([]); }}>Draw canonical count line</button><button className="lab-button" type="button" disabled={!cfg.line} onClick={clearLine}><X size={14} /> Clear line</button><label className="lab-check"><input type="checkbox" checked={!!cfg.inflip} onChange={(e) => { set("inflip", e.target.checked); if (cfg.line) set("line", { ...cfg.line, inflip: e.target.checked }); }} /> In / Out flip</label><hr /><button className="lab-button lab-button-amber" type="button" disabled={!videoSize} title="Ignore detections inside this backend-owned polygon" onClick={() => { setDrawMode("zone"); setDraftPoints([]); }}>Add exclusion zone <Hint text="Polygon where detections are excluded by the backend." /></button>{drawMode === "zone" && <button className="lab-button" type="button" disabled={!draftPoints.length} onClick={commitZone}>Commit zone ({draftPoints.length} pts)</button>}{zones.map((zone) => <div className="lab-zone-row" key={zone.zone_id}><label><input type="checkbox" checked={zone.enabled} onChange={() => toggleZone(zone.zone_id)} />{zone.zone_id}</label><button type="button" className="lab-icon-button" onClick={() => deleteZone(zone.zone_id)} aria-label={`Delete ${zone.zone_id}`}><Trash2 size={14} /></button></div>)}<p className="lab-note">All geometry is pixel-space and anchored to frame 0.</p></>}
         {section.n === 5 && <><span className="lab-capability-state">COUNTING CONTRACT</span><div className="lab-field-grid"><label><span>Conf split <Hint text="Confidence boundary used to separate confirmed and flagged detections." /></span><input type="number" min="0" max="1" step="0.01" value={cfg.conf_split ?? 0.6} onChange={(e) => set("conf_split", Math.max(0, Math.min(1, Number(e.target.value) || 0)))} /></label><label><span>ROI dedup radius <Hint text="Pixel distance used to treat nearby ROI crossings as duplicates." /></span><input type="number" min="0" max="1000" step="1" value={cfg.roi_dedup_px ?? 25} onChange={(e) => set("roi_dedup_px", Math.max(0, Math.min(1000, Math.floor(Number(e.target.value) || 0))))} /></label><label><span>ROI dedup frames <Hint text="Frames during which a nearby repeated crossing is deduplicated." /></span><input type="number" min="0" max="10000" step="1" value={cfg.roi_dedup_frames ?? 120} onChange={(e) => set("roi_dedup_frames", Math.max(0, Math.min(10000, Math.floor(Number(e.target.value) || 0))))} /></label><label><span>Count cooldown <Hint text="Minimum frames between accepted count events for the same track." /></span><input type="number" min="0" max="10000" step="1" value={cfg.count_cooldown_frames ?? 40} onChange={(e) => set("count_cooldown_frames", Math.max(0, Math.min(10000, Math.floor(Number(e.target.value) || 0))))} /></label></div><p className="lab-note">Confirmed/flagged counts are emitted only when the backend returns result.summary.</p></>}
-        {section.n === 6 && <><span className="lab-capability-state">{capability("healer") ? "HEALER WIRED" : "HEALER LOCKED"}</span>{capability("healer") ? <p className="lab-note">Occlusion recovery is backend-owned. No local healer controls are exposed.</p> : <div className="lab-capability-reasons"><div className="lab-locked-output"><strong>OCCLUSION RECOVERY LOCKED</strong><span>{capabilityReason("healer")}</span></div><div className="lab-locked-output"><strong>OPTICAL FLOW LOCKED</strong><span>{capabilityReason("optical_flow")}</span></div></div>}</>}
+        {section.n === 6 && <><span className="lab-capability-state">{capability("healer") ? "HEALER WIRED" : "CAPABILITIES LIMITED"}</span>{capability("healer") ? <p className="lab-note">Occlusion recovery is backend-owned. No local healer controls are exposed.</p> : <div className="lab-capability-notice"><strong>Backend capabilities unavailable</strong><span>Occlusion recovery and optical flow remain locked until the backend advertises support.</span><small>{capabilityReason("healer")} · {capabilityReason("optical_flow")}</small></div>}</>}
         {section.n === 7 && <><div className="lab-scorer-head"><span className="lab-capability-state">{capability("scorer") ? (scorerOutputAvailable ? "SCORER OUTPUT" : "SCORER CAPABILITY · NO OUTPUT") : "SCORER NOT WIRED"}</span>{scorerMode && <span className={`lab-scorer-mode ${scorerMode}`}>{scorerModeLabel(scorerMode)}</span>}</div>{scorerLockedReason ? <div className="lab-locked-output"><strong>SCORER CONTROLS LOCKED</strong><span>{scorerLockedReason}</span><span>Controls will appear only when the backend returns scorer-owned fields.</span></div> : <div className="lab-scorer-contract"><div><span className="lab-output-label">MODE</span><strong>{scorerModeLabel(scorerMode)}</strong></div>{scorerConfigEntries.length > 0 && <div><span className="lab-output-label">CONFIG</span><div className="lab-scorer-list">{scorerConfigEntries.map(([key, value]) => <code key={key}>{key}: {scorerValue(value)}</code>)}</div></div>}{scorerFeatureEntries.length > 0 && <div><span className="lab-output-label">FEATURES</span><div className="lab-scorer-list">{scorerFeatureEntries.map(([key, value]) => <code key={key}>{key}: {scorerValue(value)}</code>)}</div></div>}<p className="lab-note">Scorer configuration and features are read-only backend output. No browser-side weights or healer controls are exposed.</p></div>}</>}
         {section.n === 8 && <><div className="lab-output-group"><span className="lab-output-label">OVERLAY EXPORTS</span><button className="lab-button" type="button" disabled={!result} onClick={() => result && window.open(result.video_url, "_blank")}><Download size={14} /> Download overlay</button><button className="lab-button" type="button" onClick={downloadConfig}><Download size={14} /> Download config JSON</button><button className="lab-button" type="button" disabled={!result?.events?.length} onClick={downloadEventsCsv}><Download size={14} /> Count CSV <span className="lab-muted">(events only)</span></button></div>{trailSupported ? <div className="lab-trail-controls"><span className="lab-output-label">TRAIL DISPLAY</span><label className="lab-check"><input type="checkbox" checked={showTrail} onChange={(event) => setShowTrail(event.target.checked)} /> Show backend trail</label><label>Trail length <strong>{trailLength}</strong><input type="range" min="1" max="120" value={trailLength} onChange={(event) => setTrailLength(+event.target.value)} /></label><p className="lab-note">Sent to the backend on the next replay. No trail is inferred in the browser.</p></div> : <div className="lab-locked-output"><span className="lab-output-label">TRAIL / PATH</span><strong>LOCKED · backend capability required</strong><span>{capabilityReason("optical_flow")}</span><span>Trail controls appear when health or run metadata advertises backend-owned paths.</span></div>}</>}
       </div>}</section>)}</aside>
