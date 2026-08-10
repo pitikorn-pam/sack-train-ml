@@ -1140,6 +1140,18 @@ details[open] summary { margin-bottom: var(--space-sm); }
 .lab-summary-total strong, .lab-summary-gt strong { color: var(--lab-cyan) !important; }
 .lab-summary-error strong { color: var(--lab-amber) !important; }
 .lab-summary-note { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--lab-border); border-radius: 5px; background: var(--lab-panel-2); }
+.lab-diagnostics-card { border-color: rgba(255,196,77,.35); }
+.lab-diagnostics-disclaimer { margin: 7px 0 10px; color: var(--lab-amber); font-size: 10px; line-height: 1.45; }
+.lab-diagnostics-content { display: flex; flex-direction: column; gap: 10px; }
+.lab-diagnostics-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.lab-diagnostics-metrics > div, .lab-diagnostics-class-list > div, .lab-diagnostics-histogram > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px; border: 1px solid var(--lab-border); border-radius: 5px; background: var(--lab-panel-2); }
+.lab-diagnostics-metrics strong { color: var(--lab-cyan); font: 700 16px var(--font-mono); }
+.lab-diagnostics-metrics span, .lab-diagnostics-class-list span, .lab-diagnostics-histogram span { color: var(--lab-muted); font-size: 9px; }
+.lab-diagnostics-metrics span { display: block; margin-top: 3px; }
+.lab-diagnostics-block { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--lab-border); }
+.lab-diagnostics-class-list, .lab-diagnostics-histogram { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.lab-diagnostics-class-list strong, .lab-diagnostics-histogram strong { color: var(--lab-text); font: 700 11px var(--font-mono); }
+.lab-diagnostics-histogram span { font-family: var(--font-mono); }
 .lab-summary-note span { color: var(--lab-muted); text-transform: uppercase; letter-spacing: .5px; }
 .lab-summary-note strong { color: var(--lab-text); }
 .lab-summary-note em { font-style: normal; font-weight: 700; letter-spacing: .6px; }
@@ -1267,6 +1279,7 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
   .lab-progress-fill, .lab-hint-tooltip { transition: none; }
 }
 @media (max-width: 720px) { .lab-hint-tooltip { position: fixed; left: 16px; right: 16px; bottom: auto; top: 16px; width: auto; transform: translateY(-3px); } .lab-hint:hover .lab-hint-tooltip, .lab-hint:focus .lab-hint-tooltip { transform: translateY(0); } }
+@media (max-width: 720px) { .lab-diagnostics-metrics { grid-template-columns: 1fr; } .lab-diagnostics-class-list, .lab-diagnostics-histogram { grid-template-columns: 1fr; } }
 
 /* Traceable crossing inspector: selected backend event only. */
 .lab-event-table tbody tr { cursor: pointer; }
