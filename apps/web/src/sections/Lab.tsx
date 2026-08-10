@@ -6,7 +6,7 @@ import {
 import { supabase } from "../lib/supabase";
 import {
   compareRunManifests, getInferJob, labHealth, labModels, labRuns, LabJobEndpointUnavailable, manifestConfig as getManifestConfig, replayConfigFromManifest,
-  runInfer, startInferJob, type DetectionConfidenceBin, type ExclusionZone, type LabCapabilities, type LabConfig, type LabJobStatus, type LabResult, type Point, type RunManifest,
+  runInfer, startInferJob, type DetectionConfidenceBin, type ExclusionZone, type LabCapabilities, type LabConfig, type LabHealth, type LabJobStatus, type LabResult, type Point, type RunManifest,
   type ScorerMode, type ScorerVerdict,
 } from "../lib/labApi";
 
