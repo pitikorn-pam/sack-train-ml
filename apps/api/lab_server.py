@@ -14,9 +14,12 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import sys
 import tempfile
+import threading
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from dataclasses import asdict
 from pathlib import Path
@@ -38,6 +41,9 @@ _VIDEO_STORE: dict[str, str] = {}   # video_id -> output mp4 path
 _RUN_HISTORY: dict[str, dict] = {}  # bounded, process-local truthful history
 MAX_RUN_HISTORY = 100
 RUN_SCHEMA_VERSION = "lab.v1"
+MAX_JOB_STORE = 100
+_JOB_STORE: OrderedDict[str, dict] = OrderedDict()
+_JOB_LOCK = threading.RLock()
 
 # Upload limits are enforced while streaming to disk, rather than after reading
 # the whole multipart part into memory.  The model limit is intentionally
@@ -210,6 +216,165 @@ def _resolve_legacy_model_path(path: str) -> str:
     return str(candidate)
 
 
+def _new_job() -> dict:
+    """Reserve a bounded process-local job record."""
+    with _JOB_LOCK:
+        terminal = [job_id for job_id, job in _JOB_STORE.items()
+                    if job["status"] in {"succeeded", "failed"}]
+        while len(_JOB_STORE) >= MAX_JOB_STORE and terminal:
+            _JOB_STORE.pop(terminal.pop(0), None)
+        if len(_JOB_STORE) >= MAX_JOB_STORE:
+            raise HTTPException(status_code=429, detail="inference job queue is full")
+        job = {
+            "job_id": uuid.uuid4().hex,
+            "status": "queued",
+            "progress": 0.0,
+            "processed_frames": 0,
+            "total_frames": None,
+            "message": "queued",
+            "result": None,
+        }
+        _JOB_STORE[job["job_id"]] = job
+        return job
+
+
+def _update_job_progress(job_id: str, progress: float, message: str | None = None) -> None:
+    with _JOB_LOCK:
+        job = _JOB_STORE.get(job_id)
+        if job is None:
+            return
+        match = re.search(r"frame\s+(\d+)\s*/\s*(\d+)", message or "", re.IGNORECASE)
+        if match:
+            job["processed_frames"] = max(0, int(match.group(1)))
+            job["total_frames"] = max(0, int(match.group(2)))
+        job["status"] = "running"
+        job["progress"] = max(0.0, min(1.0, float(progress)))
+        if message:
+            job["message"] = message
+
+
+def _finish_job(job_id: str, *, status: str, message: str | None = None,
+                result: dict | None = None, processed_frames: int | None = None,
+                total_frames: int | None = None) -> None:
+    with _JOB_LOCK:
+        job = _JOB_STORE.get(job_id)
+        if job is None:
+            return
+        job["status"] = status
+        job["progress"] = 1.0 if status == "succeeded" else job["progress"]
+        if processed_frames is not None:
+            job["processed_frames"] = processed_frames
+        if total_frames is not None:
+            job["total_frames"] = total_frames
+        job["message"] = message or ("completed" if status == "succeeded" else status)
+        job["result"] = result if status == "succeeded" else None
+
+
+def _job_status_payload(job: dict) -> dict:
+    with _JOB_LOCK:
+        current = _JOB_STORE.get(job["job_id"], job)
+        payload = {
+            "job_id": current["job_id"],
+            "status": current["status"],
+            "progress": max(0.0, min(1.0, float(current["progress"]))),
+            "processed_frames": current["processed_frames"],
+            "total_frames": current["total_frames"],
+            "message": current["message"],
+        }
+        if current["status"] == "succeeded":
+            payload["result"] = current["result"]
+        return payload
+
+
+def _parse_config(config: str) -> lab_core.LabConfig:
+    try:
+        cfg_dict = json.loads(config or "{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid JSON config: {exc.msg}") from exc
+    if not isinstance(cfg_dict, dict):
+        raise HTTPException(status_code=422, detail="config must be a JSON object")
+    base = asdict(lab_core.LabConfig())
+    base.update({k: v for k, v in cfg_dict.items() if k in base})
+    if isinstance(base.get("classes"), list):
+        base["classes"] = tuple(base["classes"])
+    try:
+        line_value = base.get("line")
+        base["line"] = _normalize_line(line_value)
+        if isinstance(line_value, dict):
+            base["inflip"] = line_value["inflip"]
+        return lab_core.LabConfig(**base)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
+
+
+async def _prepare_inference(video: UploadFile, config: str, model: UploadFile | None):
+    suffix = Path(video.filename or "in.mp4").suffix or ".mp4"
+    in_path: str | None = None
+    model_path: str | None = None
+    try:
+        in_path, _, input_sha256 = await _persist_upload(
+            video, suffix=suffix, max_bytes=MAX_VIDEO_UPLOAD_BYTES, label="video", hash_upload=True
+        )
+        model_metadata: dict[str, object] = {}
+        if model is not None:
+            model_filename = Path(model.filename or "").name
+            if Path(model_filename).suffix.lower() != ".pt":
+                raise HTTPException(status_code=422, detail="model upload must be a .pt file")
+            if model.content_type and model.content_type.lower() not in _MODEL_CONTENT_TYPES:
+                raise HTTPException(status_code=422, detail=f"unsupported model content type: {model.content_type}")
+            model_path, model_size, model_sha256 = await _persist_upload(
+                model, suffix=".pt", max_bytes=MAX_MODEL_UPLOAD_BYTES, label="model", hash_upload=True
+            )
+            model_metadata = {"model_filename": model_filename, "model_sha256": model_sha256,
+                              "model_size_bytes": model_size}
+        cfg = _parse_config(config)
+        if model_path is not None:
+            cfg.model_path = model_path
+            try:
+                lab_core.load_model(model_path)
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail="uploaded model could not be loaded") from exc
+        else:
+            cfg.model_path = _resolve_legacy_model_path(cfg.model_path)
+            model_metadata = {"model_identifier": _model_id(cfg.model_path),
+                              "model_sha256": _sha256_file(cfg.model_path),
+                              "model_size_bytes": Path(cfg.model_path).stat().st_size if Path(cfg.model_path).is_file() else None}
+        return in_path, model_path, input_sha256, model_metadata, cfg
+    except Exception:
+        if in_path is not None:
+            Path(in_path).unlink(missing_ok=True)
+        if model_path is not None:
+            Path(model_path).unlink(missing_ok=True)
+        raise
+
+
+def _store_result(result: lab_core.LabResult, *, cfg: lab_core.LabConfig,
+                  model_metadata: dict, input_filename: str | None,
+                  input_sha256: str | None) -> dict:
+    vid = uuid.uuid4().hex
+    _VIDEO_STORE[vid] = result.output_video
+    run_id = uuid.uuid4().hex
+    created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    model_identifier = str(model_metadata.get("model_identifier") or model_metadata.get("model_filename") or "uploaded-model")
+    manifest = build_run_manifest(
+        run_id=run_id, created_at=created_at, result=result, config=asdict(cfg),
+        model_identifier=model_identifier,
+        model_sha256=model_metadata.get("model_sha256") if isinstance(model_metadata.get("model_sha256"), str) else None,
+        model_size_bytes=model_metadata.get("model_size_bytes") if isinstance(model_metadata.get("model_size_bytes"), int) else None,
+        input_filename=input_filename, input_sha256=input_sha256, video_id=vid,
+        video_url=f"/api/lab/video/{vid}")
+    _RUN_HISTORY[run_id] = manifest
+    while len(_RUN_HISTORY) > MAX_RUN_HISTORY:
+        del _RUN_HISTORY[next(iter(_RUN_HISTORY))]
+    payload = asdict(result)
+    payload.pop("output_video", None)
+    payload.update({"config": manifest["config"], "video_id": vid,
+                    "video_url": f"/api/lab/video/{vid}", "run_id": run_id,
+                    "schema_version": RUN_SCHEMA_VERSION, "manifest": manifest})
+    payload.update({key: value for key, value in model_metadata.items() if key != "model_filename"})
+    return payload
+
+
 @app.get("/api/lab/health")
 def health():
     return {
@@ -235,114 +400,69 @@ async def infer(
     model: UploadFile | None = File(None),
 ):
     """Run Lab inference using the legacy configured model or an uploaded .pt."""
-    suffix = Path(video.filename or "in.mp4").suffix or ".mp4"
-    in_path: str | None = None
-    model_path: str | None = None
-    model_metadata: dict[str, object] = {}
-    input_sha256: str | None = None
+    in_path = model_path = None
     try:
-        in_path, _, input_sha256 = await _persist_upload(
-            video, suffix=suffix, max_bytes=MAX_VIDEO_UPLOAD_BYTES, label="video", hash_upload=True
-        )
-
-        if model is not None:
-            model_filename = Path(model.filename or "").name
-            if Path(model_filename).suffix.lower() != ".pt":
-                raise HTTPException(status_code=422, detail="model upload must be a .pt file")
-            if model.content_type and model.content_type.lower() not in _MODEL_CONTENT_TYPES:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"unsupported model content type: {model.content_type}",
-                )
-            model_path, model_size, model_sha256 = await _persist_upload(
-                model,
-                suffix=".pt",
-                max_bytes=MAX_MODEL_UPLOAD_BYTES,
-                label="model",
-                hash_upload=True,
-            )
-            model_metadata = {
-                "model_filename": model_filename,
-                "model_sha256": model_sha256,
-                "model_size_bytes": model_size,
-            }
-
-        # merge posted config over defaults
-        try:
-            cfg_dict = json.loads(config or "{}")
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail=f"invalid JSON config: {exc.msg}") from exc
-        if not isinstance(cfg_dict, dict):
-            raise HTTPException(status_code=422, detail="config must be a JSON object")
-        base = asdict(lab_core.LabConfig())
-        base.update({k: v for k, v in cfg_dict.items() if k in base})
-        if isinstance(base.get("classes"), list):
-            base["classes"] = tuple(base["classes"])
-        try:
-            if "line" in base:
-                line_value = base["line"]
-                # Validate the canonical object before reading inflip so malformed
-                # wire data becomes a client error rather than an uncaught KeyError.
-                base["line"] = _normalize_line(line_value)
-                if isinstance(line_value, dict):
-                    base["inflip"] = line_value["inflip"]
-            cfg = lab_core.LabConfig(**base)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
-
-        if model_path is not None:
-            # The uploaded model always wins over legacy config.model_path.
-            cfg.model_path = model_path
-            try:
-                lab_core.load_model(model_path)
-            except Exception as exc:
-                raise HTTPException(status_code=422, detail="uploaded model could not be loaded") from exc
-        else:
-            # Preserve the default and old absolute-path config shape, but only
-            # after constraining both forms to MODELS_DIR.
-            cfg.model_path = _resolve_legacy_model_path(cfg.model_path)
-            model_metadata = {
-                "model_identifier": _model_id(cfg.model_path),
-                "model_sha256": _sha256_file(cfg.model_path),
-                "model_size_bytes": Path(cfg.model_path).stat().st_size if Path(cfg.model_path).is_file() else None,
-            }
-
+        in_path, model_path, input_sha256, model_metadata, cfg = await _prepare_inference(video, config, model)
         try:
             result = lab_core.run_inference(in_path, cfg)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
-        vid = uuid.uuid4().hex
-        _VIDEO_STORE[vid] = result.output_video
-        run_id = uuid.uuid4().hex
-        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        model_identifier = str(model_metadata.get("model_identifier") or model_metadata.get("model_filename") or "uploaded-model")
-        manifest_model_sha256 = model_metadata.get("model_sha256") if isinstance(model_metadata.get("model_sha256"), str) else None
-        manifest_model_size = model_metadata.get("model_size_bytes") if isinstance(model_metadata.get("model_size_bytes"), int) else None
-        manifest = build_run_manifest(
-            run_id=run_id, created_at=created_at, result=result,
-            config=asdict(cfg), model_identifier=model_identifier,
-            model_sha256=manifest_model_sha256, model_size_bytes=manifest_model_size,
-            input_filename=video.filename, input_sha256=input_sha256,
-            video_id=vid, video_url=f"/api/lab/video/{vid}",
-        )
-        _RUN_HISTORY[run_id] = manifest
-        while len(_RUN_HISTORY) > MAX_RUN_HISTORY:
-            del _RUN_HISTORY[next(iter(_RUN_HISTORY))]
-        payload = asdict(result)
-        payload.pop("output_video", None)
-        payload["config"] = manifest["config"]
-        payload["video_id"] = vid
-        payload["video_url"] = f"/api/lab/video/{vid}"
-        payload["run_id"] = run_id
-        payload["schema_version"] = RUN_SCHEMA_VERSION
-        payload["manifest"] = manifest
-        payload.update({key: value for key, value in model_metadata.items() if key != "model_filename"})
-        return JSONResponse(payload)
+        return JSONResponse(_store_result(result, cfg=cfg, model_metadata=model_metadata,
+                                           input_filename=video.filename, input_sha256=input_sha256))
     finally:
         if in_path is not None:
             Path(in_path).unlink(missing_ok=True)
         if model_path is not None:
             Path(model_path).unlink(missing_ok=True)
+
+
+def _run_job(job_id: str, *, in_path: str, model_path: str | None,
+             cfg: lab_core.LabConfig, model_metadata: dict,
+             input_filename: str | None, input_sha256: str | None) -> None:
+    _update_job_progress(job_id, 0.0, "running")
+    try:
+        result = lab_core.run_inference(in_path, cfg, progress=lambda p, msg: _update_job_progress(job_id, p, msg))
+        payload = _store_result(result, cfg=cfg, model_metadata=model_metadata,
+                                input_filename=input_filename, input_sha256=input_sha256)
+        _finish_job(job_id, status="succeeded", result=payload,
+                    processed_frames=result.frames_processed, total_frames=result.frames_total)
+    except Exception as exc:
+        _finish_job(job_id, status="failed", message=str(exc) or exc.__class__.__name__)
+    finally:
+        Path(in_path).unlink(missing_ok=True)
+        if model_path is not None:
+            Path(model_path).unlink(missing_ok=True)
+
+
+@app.post("/api/lab/infer/jobs", status_code=202)
+async def infer_job(
+    video: UploadFile = File(...),
+    config: str = Form("{}"),
+    model: UploadFile | None = File(None),
+):
+    """Queue inference and return a process-local polling handle."""
+    job = _new_job()
+    try:
+        in_path, model_path, input_sha256, model_metadata, cfg = await _prepare_inference(video, config, model)
+    except Exception:
+        with _JOB_LOCK:
+            _JOB_STORE.pop(job["job_id"], None)
+        raise
+    import asyncio
+    asyncio.create_task(asyncio.to_thread(
+        _run_job, job["job_id"], in_path=in_path, model_path=model_path,
+        cfg=cfg, model_metadata=model_metadata, input_filename=video.filename,
+        input_sha256=input_sha256))
+    return _job_status_payload(job)
+
+
+@app.get("/api/lab/jobs/{job_id}")
+def get_job(job_id: str):
+    with _JOB_LOCK:
+        job = _JOB_STORE.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return _job_status_payload(job)
 
 
 @app.get("/api/lab/video/{video_id}")

@@ -77,6 +77,17 @@ def test_infer_rejects_malformed_config_before_inference(client, config, expecte
     assert expected_detail in response.json()["detail"]
 
 
+def test_infer_job_rejects_malformed_config_before_queueing(client):
+    response = client.post(
+        "/api/lab/infer/jobs",
+        files={"video": ("sample.mp4", b"not-a-video", "video/mp4")},
+        data={"config": "{not-json"},
+    )
+
+    assert response.status_code == 400
+    assert "invalid JSON config" in response.json()["detail"]
+
+
 def test_runs_has_explicit_process_local_persistence_envelope(client):
     response = client.get("/api/lab/runs")
 
@@ -108,3 +119,30 @@ def test_detection_only_result_keeps_counting_fields_null_without_line():
     assert payload["events"] == []
     assert payload["summary"] == {}
     assert payload["config"]["line"] is None
+
+
+def test_job_progress_snapshot_is_truthful_and_bounded():
+    job = lab_server._new_job()
+
+    assert lab_server._job_status_payload(job)["status"] == "queued"
+    assert lab_server._job_status_payload(job)["progress"] == 0
+
+    lab_server._update_job_progress(job["job_id"], 0.4, "frame 4/10")
+    snapshot = lab_server._job_status_payload(job)
+    assert snapshot["status"] == "running"
+    assert snapshot["progress"] == 0.4
+    assert snapshot["processed_frames"] == 4
+    assert snapshot["total_frames"] == 10
+
+    lab_server._finish_job(job["job_id"], status="succeeded", result={"ok": True})
+    assert lab_server._job_status_payload(job)["result"] == {"ok": True}
+
+
+def test_job_failure_does_not_expose_partial_result():
+    job = lab_server._new_job()
+    lab_server._finish_job(job["job_id"], status="failed", message="boom", result={"secret": True})
+
+    snapshot = lab_server._job_status_payload(job)
+    assert snapshot["status"] == "failed"
+    assert snapshot["message"] == "boom"
+    assert "result" not in snapshot

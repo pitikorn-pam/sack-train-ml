@@ -5,8 +5,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
-  compareRunManifests, labHealth, labModels, labRuns, manifestConfig as getManifestConfig, replayConfigFromManifest,
-  runInfer, type ExclusionZone, type LabCapabilities, type LabConfig, type LabResult, type Point, type RunManifest,
+  compareRunManifests, getInferJob, labHealth, labModels, labRuns, LabJobEndpointUnavailable, manifestConfig as getManifestConfig, replayConfigFromManifest,
+  runInfer, startInferJob, type ExclusionZone, type LabCapabilities, type LabConfig, type LabJobStatus, type LabResult, type Point, type RunManifest,
   type ScorerMode, type ScorerVerdict,
 } from "../lib/labApi";
 
@@ -76,6 +76,20 @@ function formatElapsed(ms: number | null): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function jobProgressPercent(value: unknown): number | null {
+  const number = finiteNumber(value);
+  if (number == null) return null;
+  return Math.max(0, Math.min(100, number <= 1 ? number * 100 : number));
+}
+function waitForReplayPoll(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { window.clearTimeout(timer); reject(new DOMException("Replay polling cancelled", "AbortError")); }, { once: true });
+  });
+}
 function scorerEntries(values: Record<string, unknown> | undefined) {
   return values ? Object.entries(values).filter(([, value]) => value !== undefined) : [];
 }
@@ -97,6 +111,10 @@ export function Lab() {
   const [replayProgress, setReplayProgress] = useState(0);
   const [replayElapsedMs, setReplayElapsedMs] = useState<number | null>(null);
   const [replayEtaMs, setReplayEtaMs] = useState<number | null>(null);
+  const [replayProcessedFrames, setReplayProcessedFrames] = useState<number | null>(null);
+  const [replayTotalFrames, setReplayTotalFrames] = useState<number | null>(null);
+  const [replayProgressMode, setReplayProgressMode] = useState<"server" | "estimate" | null>(null);
+  const [replayStatus, setReplayStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
@@ -124,9 +142,11 @@ export function Lab() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const replayStartedAtRef = useRef<number | null>(null);
   const replayEstimateMsRef = useRef<number | null>(null);
+  const replayAbortRef = useRef<AbortController | null>(null);
+  const replayRunRef = useRef(false);
 
   useEffect(() => {
-    if (!busy) return;
+    if (!busy || replayProgressMode !== "estimate") return;
     const startedAt = replayStartedAtRef.current ?? Date.now();
     replayStartedAtRef.current = startedAt;
     const estimateMs = replayEstimateMsRef.current ?? 15000;
@@ -140,9 +160,12 @@ export function Lab() {
     update();
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
-  }, [busy]);
+  }, [busy, replayProgressMode]);
 
   useEffect(() => () => {
+    replayAbortRef.current?.abort();
+    replayAbortRef.current = null;
+    replayRunRef.current = false;
     replayStartedAtRef.current = null;
     replayEstimateMsRef.current = null;
   }, []);
@@ -304,22 +327,70 @@ export function Lab() {
     finally { setModelBusy(false); }
   }
   async function run() {
+    if (busy || replayRunRef.current) return;
     if (!video || !modelReady) { setErr(runDisabledReason || "Model or video is not ready."); return; }
     const durationSeconds = videoRef.current?.duration;
     const estimateMs = durationSeconds && Number.isFinite(durationSeconds) && durationSeconds > 0
       ? Math.max(15000, durationSeconds * 2000)
       : Math.max(15000, (video.size / (1024 * 1024)) * 1200);
+    const requestConfig = { ...cfg, ...trailConfigForRun(), model_path: modelMode === "legacy" ? legacyModel : undefined, exclusion_zones: zones };
+    const controller = new AbortController();
+    replayAbortRef.current?.abort();
+    replayAbortRef.current = controller;
+    replayRunRef.current = true;
     replayEstimateMsRef.current = estimateMs;
     replayStartedAtRef.current = Date.now();
-    setReplayProgress(0); setReplayElapsedMs(0); setReplayEtaMs(estimateMs);
+    setReplayProgress(0); setReplayElapsedMs(0); setReplayEtaMs(null);
+    setReplayProcessedFrames(null); setReplayTotalFrames(null); setReplayProgressMode(null); setReplayStatus("starting");
     setBusy(true); setErr(null); setResult(null);
-    const trailConfig = trailSupported ? { show_trail: showTrail, trail_len: trailLength } : {};
     try {
-      const nextResult = await runInfer(video, { ...cfg, ...trailConfig, model_path: modelMode === "legacy" ? legacyModel : undefined, exclusion_zones: zones }, modelMode === "legacy" ? undefined : localModel ?? undefined);
+      let nextResult: LabResult | null = null;
+      try {
+        const job = await startInferJob(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal);
+        setReplayProgressMode("server");
+        setReplayStatus(job.status ?? "queued");
+        let pollDelay = 500;
+        const maxPolls = 240;
+        let snapshot: LabJobStatus | null = null;
+        for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+          snapshot = await getInferJob(job.job_id, controller.signal);
+          setReplayStatus(snapshot.status);
+          const processed = finiteNumber(snapshot.processed_frames);
+          const total = finiteNumber(snapshot.total_frames);
+          const serverProgress = jobProgressPercent(snapshot.progress);
+          if (processed != null) setReplayProcessedFrames(Math.max(0, Math.floor(processed)));
+          if (total != null) setReplayTotalFrames(Math.max(0, Math.floor(total)));
+          const frameProgress = processed != null && total != null && total > 0 ? (processed / total) * 100 : null;
+          setReplayProgress(Math.round(Math.max(0, Math.min(100, frameProgress ?? serverProgress ?? 0))));
+          if (snapshot.elapsed_ms != null) setReplayElapsedMs(Math.max(0, snapshot.elapsed_ms));
+          if (snapshot.eta_ms != null) setReplayEtaMs(Math.max(0, snapshot.eta_ms));
+          if (snapshot.status === "succeeded") {
+            if (!snapshot.result) throw new Error("Replay job succeeded without a result.");
+            nextResult = snapshot.result;
+            break;
+          }
+          if (snapshot.status === "failed") {
+            throw new Error(snapshot.message ?? snapshot.error ?? snapshot.detail ?? "Replay job failed. Check the backend logs and retry.");
+          }
+          await waitForReplayPoll(pollDelay, controller.signal);
+          pollDelay = Math.min(4000, Math.round(pollDelay * 1.5));
+        }
+        if (!snapshot || snapshot.status !== "succeeded") throw new Error("Replay job timed out before completion. Retry the replay.");
+      } catch (error) {
+        if (!(error instanceof LabJobEndpointUnavailable)) throw error;
+        setReplayProgressMode("estimate");
+        setReplayStatus("legacy synchronous fallback");
+        nextResult = await runInfer(video, requestConfig, modelMode === "legacy" ? undefined : localModel ?? undefined, controller.signal);
+      }
+      if (!nextResult) throw new Error("Replay completed without a result. Retry the replay.");
       setResult(nextResult);
       await refreshRunHistory();
-    }
-    catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErr(error instanceof Error ? error.message : String(error));
+    } finally {
+      replayAbortRef.current = null;
+      replayRunRef.current = false;
       setReplayProgress(100);
       setReplayEtaMs(0);
       setBusy(false);
@@ -327,6 +398,7 @@ export function Lab() {
       replayEstimateMsRef.current = null;
     }
   }
+  function trailConfigForRun() { return trailSupported ? { show_trail: showTrail, trail_len: trailLength } : {}; }
   function toggleClass(id: number) { set("classes", (cfg.classes ?? []).includes(id) ? (cfg.classes ?? []).filter((value) => value !== id) : [...(cfg.classes ?? []), id]); }
   function toggleSection(n: number) { setSections((items) => items.map((item) => item.n === n ? { ...item, open: !item.open } : item)); }
   function loadManifestConfig(run: RunManifest) {
@@ -415,7 +487,7 @@ export function Lab() {
         {section.n === 8 && <><div className="lab-output-group"><span className="lab-output-label">OVERLAY EXPORTS</span><button className="lab-button" type="button" disabled={!result} onClick={() => result && window.open(result.video_url, "_blank")}><Download size={14} /> Download overlay</button><button className="lab-button" type="button" onClick={downloadConfig}><Download size={14} /> Download config JSON</button><button className="lab-button" type="button" disabled={!result?.events?.length} onClick={downloadEventsCsv}><Download size={14} /> Count CSV <span className="lab-muted">(events only)</span></button></div>{trailSupported ? <div className="lab-trail-controls"><span className="lab-output-label">TRAIL DISPLAY</span><label className="lab-check"><input type="checkbox" checked={showTrail} onChange={(event) => setShowTrail(event.target.checked)} /> Show backend trail</label><label>Trail length <strong>{trailLength}</strong><input type="range" min="1" max="120" value={trailLength} onChange={(event) => setTrailLength(+event.target.value)} /></label><p className="lab-note">Sent to the backend on the next replay. No trail is inferred in the browser.</p></div> : <div className="lab-locked-output"><span className="lab-output-label">TRAIL / PATH</span><strong>LOCKED · backend capability required</strong><span>Trail controls appear when health or run metadata advertises backend-owned paths.</span></div>}</>}
       </div>}</section>)}</aside>
 
-      <main className="lab-center"><div className="lab-viewer-card"><div className="lab-viewer-head"><div><span className="lab-kicker">REPLAY VIEWER</span><h3>{video?.name ?? "No source loaded"}</h3></div><div className="lab-meta"><span>{videoSize ? `${videoSize.width} × ${videoSize.height}` : "— × —"}</span><span>frame 0</span><span>{videoFps ? `${videoFps.toFixed(1)} fps` : "fps —"}</span></div></div><div className="lab-viewer"><div className="lab-viewer-empty">{video && videoUrl ? <><video ref={videoRef} src={videoUrl} controls onLoadedMetadata={handleVideoMetadata} onError={() => setEditorError("Unable to load this video.")} /><canvas ref={canvasRef} onClick={handleCanvasClick} aria-label="Lab drawing canvas" className={drawMode ? "drawing" : ""} /></> : <><Layers3 size={34} /><strong>Load a video to start the replay</strong><span>Detection overlay and geometry tools appear here.</span></>}</div></div>{editorError && <div className="lab-error-banner"><AlertTriangle size={14} /> {editorError}</div>}<div className="lab-tool-row"><button type="button" className={`lab-action-card ${drawMode === "line" ? "selected" : ""}`} disabled={!videoSize} onClick={() => { setDrawMode("line"); setDraftPoints([]); }}><GitBranch size={16} /><span>Draw Count Line</span><small>2 points · frame 0</small></button><button type="button" className={`lab-action-card ${drawMode === "zone" ? "selected" : ""}`} disabled={!videoSize} onClick={() => { setDrawMode("zone"); setDraftPoints([]); }}><Layers3 size={16} /><span>Add Exclusion Zone</span><small>polygon editor</small></button><button type="button" className="lab-action-card" onClick={() => { set("inflip", !cfg.inflip); if (cfg.line) set("line", { ...cfg.line, inflip: !cfg.inflip }); }}><RotateCcw size={16} /><span>In–Out Flip</span><small>{cfg.inflip ? "flipped" : "normal"}</small></button><button type="button" className="lab-action-card" disabled title="Mid-clip switching is not wired in v0"><Play size={16} /><span>Mid-Clip Switch</span><small>not wired in v0</small></button></div><div className="lab-timeline"><span>00:00</span><div><i style={{ width: video ? "3%" : "0%" }} /></div><span>{videoRef.current?.duration ? `${Math.round(videoRef.current.duration)}s` : "—"}</span></div><div className="lab-run-row"><button className="lab-run-button" type="button" disabled={busy || !!runDisabledReason} onClick={run}><Play size={18} fill="currentColor" />{busy ? "Running replay…" : "Run Replay"}</button><span className="lab-run-hint">{busy ? "Backend is processing the replay; results will replace this state." : runDisabledReason || "Ready to run. Counts appear only when the backend returns a summary."}</span></div>{busy && <div className="lab-replay-progress" role="status" aria-live="polite"><div className="lab-replay-progress-head"><strong>Estimated client progress</strong><span>{replayProgress}%</span></div><div className="lab-progress-track"><div className="lab-progress-fill" style={{ width: `${replayProgress}%` }} /></div><div className="lab-replay-progress-meta"><span>Elapsed {formatElapsed(replayElapsedMs)}</span><span>Estimated remaining {formatElapsed(replayEtaMs)}</span></div><p className="lab-note">Estimate only — the single backend request does not report server progress. Progress is capped at 95% until the response arrives.</p></div>}{err && <div className="lab-error-banner"><AlertTriangle size={14} /> {err}</div>}</div></main>
+      <main className="lab-center"><div className="lab-viewer-card"><div className="lab-viewer-head"><div><span className="lab-kicker">REPLAY VIEWER</span><h3>{video?.name ?? "No source loaded"}</h3></div><div className="lab-meta"><span>{videoSize ? `${videoSize.width} × ${videoSize.height}` : "— × —"}</span><span>frame 0</span><span>{videoFps ? `${videoFps.toFixed(1)} fps` : "fps —"}</span></div></div><div className="lab-viewer"><div className="lab-viewer-empty">{video && videoUrl ? <><video ref={videoRef} src={videoUrl} controls onLoadedMetadata={handleVideoMetadata} onError={() => setEditorError("Unable to load this video.")} /><canvas ref={canvasRef} onClick={handleCanvasClick} aria-label="Lab drawing canvas" className={drawMode ? "drawing" : ""} /></> : <><Layers3 size={34} /><strong>Load a video to start the replay</strong><span>Detection overlay and geometry tools appear here.</span></>}</div></div>{editorError && <div className="lab-error-banner"><AlertTriangle size={14} /> {editorError}</div>}<div className="lab-tool-row"><button type="button" className={`lab-action-card ${drawMode === "line" ? "selected" : ""}`} disabled={!videoSize} onClick={() => { setDrawMode("line"); setDraftPoints([]); }}><GitBranch size={16} /><span>Draw Count Line</span><small>2 points · frame 0</small></button><button type="button" className={`lab-action-card ${drawMode === "zone" ? "selected" : ""}`} disabled={!videoSize} onClick={() => { setDrawMode("zone"); setDraftPoints([]); }}><Layers3 size={16} /><span>Add Exclusion Zone</span><small>polygon editor</small></button><button type="button" className="lab-action-card" onClick={() => { set("inflip", !cfg.inflip); if (cfg.line) set("line", { ...cfg.line, inflip: !cfg.inflip }); }}><RotateCcw size={16} /><span>In–Out Flip</span><small>{cfg.inflip ? "flipped" : "normal"}</small></button><button type="button" className="lab-action-card" disabled title="Mid-clip switching is not wired in v0"><Play size={16} /><span>Mid-Clip Switch</span><small>not wired in v0</small></button></div><div className="lab-timeline"><span>00:00</span><div><i style={{ width: video ? "3%" : "0%" }} /></div><span>{videoRef.current?.duration ? `${Math.round(videoRef.current.duration)}s` : "—"}</span></div><div className="lab-run-row"><button className="lab-run-button" type="button" disabled={busy || !!runDisabledReason} onClick={run}><Play size={18} fill="currentColor" />{busy ? "Running replay…" : "Run Replay"}</button><span className="lab-run-hint">{busy ? "Backend is processing the replay; results will replace this state." : runDisabledReason || "Ready to run. Counts appear only when the backend returns a summary."}</span></div>{busy && <div className="lab-replay-progress" role="status" aria-live="polite"><div className="lab-replay-progress-head"><strong>{replayProgressMode === "server" ? "Server replay progress" : replayProgressMode === "estimate" ? "Estimated client progress" : "Starting replay"}</strong><span>{replayProgress}%</span></div><div className="lab-progress-track"><div className="lab-progress-fill" style={{ width: `${replayProgress}%` }} /></div><div className="lab-replay-progress-meta"><span>{replayProcessedFrames != null && replayTotalFrames != null ? `${replayProcessedFrames.toLocaleString()} / ${replayTotalFrames.toLocaleString()} frames` : "Frame count pending"}</span><span>Elapsed {formatElapsed(replayElapsedMs)}</span><span>{replayEtaMs != null ? `ETA ${formatElapsed(replayEtaMs)}` : "ETA pending"}</span></div><p className="lab-note">{replayProgressMode === "server" ? `Backend status: ${replayStatus ?? "running"}. Progress uses server-reported frames when available.` : replayProgressMode === "estimate" ? "Estimate only — the legacy synchronous fallback does not report server progress and is capped at 95% until the response arrives." : "Submitting an asynchronous replay job…"}</p></div>}{err && <div className="lab-error-banner"><AlertTriangle size={14} /> <span>{err}</span><button className="lab-button lab-button-retry" type="button" disabled={busy || !!runDisabledReason} onClick={run}>Retry replay</button></div>}</div></main>
 
       <aside className="lab-inspector"><section className="lab-inspector-card"><div className="lab-card-title"><span>OUTPUT PREVIEW</span>{result && <span className="lab-ok">READY</span>}</div>{result ? <><video src={result.video_url} controls /><div className="lab-stat-grid">{stats.map((stat) => <div key={stat.label}><strong>{stat.value}</strong><span>{stat.label}</span></div>)}</div><a className="lab-download-link" href={result.video_url} download><Download size={14} /> Download overlay.mp4</a></> : <div className="lab-empty-inspector"><Layers3 size={22} /><span>Run Replay to populate the backend output.</span></div>}</section>
         <section className="lab-inspector-card"><div className="lab-card-title"><span>REPRODUCIBILITY</span><span className={`lab-chip ${manifestReady ? "lab-chip-live" : ""}`}>{manifestReady ? "MANIFEST READY" : "BACKEND FIELD REQUIRED"}</span></div>{manifest ? <div className="lab-manifest-grid"><div><span>run ID</span><code>{manifest.run_id}</code></div><div><span>schema</span><code>{manifest.schema_version}</code></div><div><span>config snapshot</span><strong className={manifestConfig ? "lab-ok" : "lab-muted"}>{manifestConfig ? "AVAILABLE" : "NOT RETURNED"}</strong></div><button className="lab-button lab-button-cyan" type="button" disabled={!manifestReady} onClick={downloadManifest}><Download size={14} /> Export reproducible manifest JSON</button></div> : <div className="lab-research-empty">Run Replay did not return a backend-owned run manifest. Reproducible export stays locked; the browser does not synthesize one.</div>}</section>

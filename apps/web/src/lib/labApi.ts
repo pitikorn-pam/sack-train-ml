@@ -303,6 +303,36 @@ export type LabHealth = {
   ok: boolean;
   capabilities?: LabCapabilities;
 };
+export type LabJobState = "queued" | "running" | "succeeded" | "failed" | string;
+
+/** Backend-owned replay job snapshot. Optional fields keep the client compatible with worker revisions. */
+export type LabJobStatus = {
+  job_id: string;
+  status: LabJobState;
+  progress?: number | null;
+  processed_frames?: number | null;
+  total_frames?: number | null;
+  elapsed_ms?: number | null;
+  eta_ms?: number | null;
+  result?: LabResult;
+  message?: string | null;
+  error?: string | null;
+  detail?: string | null;
+};
+
+export type LabJobStart = {
+  job_id: string;
+  status?: LabJobState;
+};
+
+/** Signals that the optional async endpoint is not deployed; callers may use the legacy sync endpoint. */
+export class LabJobEndpointUnavailable extends Error {
+  constructor() {
+    super("Lab replay jobs are not available");
+    this.name = "LabJobEndpointUnavailable";
+  }
+}
+
 export type LabModels = {
   models: string[];
   default: string;
@@ -332,16 +362,54 @@ export async function labRuns(): Promise<RunHistoryResponse> {
   return payload as RunHistoryResponse;
 }
 
-export async function runInfer(video: File, config: LabConfig, modelFile?: File): Promise<LabResult> {
+function replayForm(video: File, config: LabConfig, modelFile?: File): FormData {
   const fd = new FormData();
   fd.append("video", video);
   fd.append("config", JSON.stringify(config));
   if (modelFile) fd.append("model", modelFile, modelFile.name);
-  const r = await fetch("/api/lab/infer", { method: "POST", body: fd });
-  if (!r.ok) {
-    let detail = "";
-    try { detail = (await r.json())?.detail ?? ""; } catch { /* non-json response */ }
-    throw new Error(`inference failed (${r.status})${detail ? `: ${detail}` : ""}`);
+  return fd;
+}
+
+async function responseDetail(response: Response): Promise<string> {
+  try {
+    const payload = await response.json() as { detail?: unknown; message?: unknown; error?: unknown };
+    const value = payload.detail ?? payload.message ?? payload.error;
+    return typeof value === "string" ? value : "";
+  } catch { return ""; }
+}
+
+export async function startInferJob(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal): Promise<LabJobStart> {
+  const response = await fetch("/api/lab/infer/jobs", { method: "POST", body: replayForm(video, config, modelFile), signal });
+  if (response.status === 404 || response.status === 405) throw new LabJobEndpointUnavailable();
+  if (!response.ok) {
+    const detail = await responseDetail(response);
+    throw new Error(`inference job start failed (${response.status})${detail ? `: ${detail}` : ""}`);
   }
-  return r.json();
+  const payload: unknown = await response.json();
+  if (!payload || typeof payload !== "object" || typeof (payload as { job_id?: unknown }).job_id !== "string") {
+    throw new Error("inference job response did not include a job_id");
+  }
+  return payload as LabJobStart;
+}
+
+export async function getInferJob(jobId: string, signal?: AbortSignal): Promise<LabJobStatus> {
+  const response = await fetch(`/api/lab/jobs/${encodeURIComponent(jobId)}`, { signal });
+  if (!response.ok) {
+    const detail = await responseDetail(response);
+    throw new Error(`inference job status failed (${response.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const payload: unknown = await response.json();
+  if (!payload || typeof payload !== "object" || typeof (payload as { status?: unknown }).status !== "string") {
+    throw new Error("inference job status response was invalid");
+  }
+  return { job_id: jobId, ...(payload as Omit<LabJobStatus, "job_id">) };
+}
+
+export async function runInfer(video: File, config: LabConfig, modelFile?: File, signal?: AbortSignal): Promise<LabResult> {
+  const response = await fetch("/api/lab/infer", { method: "POST", body: replayForm(video, config, modelFile), signal });
+  if (!response.ok) {
+    const detail = await responseDetail(response);
+    throw new Error(`inference failed (${response.status})${detail ? `: ${detail}` : ""}`);
+  }
+  return response.json();
 }

@@ -484,8 +484,6 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
             continue
         if fi % cfg.frame_stride != 0:
             continue
-        if progress and total:
-            progress(min(1.0, fi / total), f"frame {fi}/{total}")
         res = model.predict(frame, conf=cfg.conf, iou=cfg.iou, classes=list(cfg.classes),
                             device=cfg.device, verbose=False)[0]
         n_sack = 0
@@ -529,6 +527,8 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 2)
         writer.write(frame)
         n_written += 1; max_sack = max(max_sack, n_sack); sum_sack += n_sack
+        if progress and total:
+            progress(min(1.0, (fi + 1) / total), f"frame {n_written}/{total}")
     cap.release(); writer.release()
 
     out_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)

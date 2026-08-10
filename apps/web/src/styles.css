@@ -1259,7 +1259,13 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
 .lab-replay-progress-head strong { color: var(--lab-cyan); font: 700 10px var(--font-mono); }
 .lab-progress-track { height: 7px; overflow: hidden; border-radius: 99px; background: #233249; }
 .lab-progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--lab-cyan), var(--lab-green)); transition: width .25s ease; }
+.lab-replay-progress-meta { flex-wrap: wrap; }
+.lab-replay-progress-meta span { color: var(--lab-muted); }
 .lab-replay-progress-meta span:last-child { color: var(--lab-amber); }
+.lab-replay-progress .lab-button-retry { align-self: flex-start; }
+@media (prefers-reduced-motion: reduce) {
+  .lab-progress-fill, .lab-hint-tooltip { transition: none; }
+}
 @media (max-width: 720px) { .lab-hint-tooltip { position: fixed; left: 16px; right: 16px; bottom: auto; top: 16px; width: auto; transform: translateY(-3px); } .lab-hint:hover .lab-hint-tooltip, .lab-hint:focus .lab-hint-tooltip { transform: translateY(0); } }
 
 /* Traceable crossing inspector: selected backend event only. */
