@@ -58,6 +58,24 @@ _MODEL_CONTENT_TYPES = {
     "binary/octet-stream",
 }
 
+# These are deliberately locked until the backend has the evidence and
+# safeguards needed to make recovery claims auditable.  Keep this metadata
+# primitive-only so the health response remains safe for JSON clients.
+_CAPABILITY_DETAILS = {
+    "healer": {
+        "enabled": False,
+        "supported": False,
+        "status": "locked",
+        "reason": "requires real path/person evidence, recovery provenance, TTL, and duplicate safeguards",
+    },
+    "optical_flow": {
+        "enabled": False,
+        "supported": False,
+        "status": "unsupported",
+        "reason": "optical-flow predictor is not implemented",
+    },
+}
+
 
 async def _persist_upload(
     upload: UploadFile,
@@ -422,7 +440,13 @@ def health():
         "ok": True,
         "service": "lab",
         "device_default": "mps",
-        "capabilities": {"tracker": True, "healer": False, "scorer": True},
+        "capabilities": {
+            "tracker": True,
+            "healer": False,
+            "scorer": True,
+            "optical_flow": False,
+        },
+        "capability_details": _CAPABILITY_DETAILS,
     }
 
 

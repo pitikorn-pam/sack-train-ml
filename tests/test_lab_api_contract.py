@@ -34,8 +34,43 @@ def test_health_exposes_lab_capabilities(client):
         "ok": True,
         "service": "lab",
         "device_default": "mps",
-        "capabilities": {"tracker": True, "healer": False, "scorer": True},
+        "capabilities": {
+            "tracker": True,
+            "healer": False,
+            "scorer": True,
+            "optical_flow": False,
+        },
+        "capability_details": {
+            "healer": {
+                "enabled": False,
+                "supported": False,
+                "status": "locked",
+                "reason": "requires real path/person evidence, recovery provenance, TTL, and duplicate safeguards",
+            },
+            "optical_flow": {
+                "enabled": False,
+                "supported": False,
+                "status": "unsupported",
+                "reason": "optical-flow predictor is not implemented",
+            },
+        },
     }
+
+
+def test_health_capability_metadata_is_json_safe_and_preserves_legacy_flags(client):
+    payload = client.get("/api/lab/health").json()
+
+    assert payload["capabilities"]["tracker"] is True
+    assert payload["capabilities"]["healer"] is False
+    assert payload["capabilities"]["scorer"] is True
+    assert payload["capabilities"]["optical_flow"] is False
+    for capability in ("healer", "optical_flow"):
+        details = payload["capability_details"][capability]
+        assert details["enabled"] is False
+        assert details["supported"] is False
+        assert details["status"] in {"locked", "unsupported"}
+        assert details["reason"]
+    json.dumps(payload)
 
 
 def test_models_returns_safe_identifiers_and_config(client):

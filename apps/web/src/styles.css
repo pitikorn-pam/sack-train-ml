@@ -1095,6 +1095,7 @@ details[open] summary { margin-bottom: var(--space-sm); }
 .lab-output-label { color: var(--lab-cyan); font: 700 9px var(--font-mono); letter-spacing: .8px; }
 .lab-locked-output { color: var(--lab-muted); font-size: 10px; }
 .lab-locked-output strong { color: var(--lab-amber); font: 700 10px var(--font-mono); }
+.lab-capability-reasons { display: flex; flex-direction: column; gap: 9px; }
 .lab-scorer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lab-scorer-mode { border: 1px solid var(--lab-border); border-radius: 4px; padding: 4px 7px; color: var(--lab-cyan); font: 700 10px var(--font-mono); letter-spacing: .6px; }
 .lab-scorer-mode.fused { color: var(--lab-green); border-color: rgba(73,229,139,.45); }

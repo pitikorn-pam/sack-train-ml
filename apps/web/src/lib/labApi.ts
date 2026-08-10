@@ -117,10 +117,20 @@ export type CrossingEvent = {
 export type LabCapabilities = {
   tracker?: boolean;
   healer?: boolean;
+  optical_flow?: boolean;
   scorer?: boolean;
   trail?: boolean;
   path?: boolean;
 };
+
+/** Backend-owned explanations for capabilities that are unavailable or locked. */
+export type LabCapabilityDetail = {
+  enabled?: boolean;
+  supported?: boolean;
+  status?: string;
+  reason?: string;
+};
+export type LabCapabilityDetails = Record<string, LabCapabilityDetail>;
 
 /** A persisted event row emitted by the backend manifest. Optional fields keep this client
  * compatible with contract revisions while preserving the rule that identity is backend-owned. */
@@ -370,6 +380,8 @@ export type LabResult = {
   paths?: TrackPath[];
   trail?: { trail_len?: number; paths?: TrackPath[] };
   capabilities?: LabCapabilities;
+  capability_details?: LabCapabilityDetails;
+  unsupported_capabilities?: string[];
   /** Backend scorer contract. Absent means scorer output is unavailable. */
   scorer_mode?: ScorerMode;
   scorer_config?: ScorerConfig;
@@ -379,6 +391,8 @@ export type LabResult = {
 export type LabHealth = {
   ok: boolean;
   capabilities?: LabCapabilities;
+  capability_details?: LabCapabilityDetails;
+  unsupported_capabilities?: string[];
 };
 export type LabJobState = "queued" | "running" | "succeeded" | "failed" | string;
 
