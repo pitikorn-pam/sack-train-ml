@@ -121,6 +121,43 @@ def test_detection_only_result_keeps_counting_fields_null_without_line():
     assert payload["config"]["line"] is None
 
 
+def test_detection_only_result_exposes_truthful_backend_diagnostics():
+    result = lab_core.LabResult(
+        frames_processed=2,
+        frames_total=2,
+        detection_diagnostics=lab_core.aggregate_detection_diagnostics([
+            {"frame_index": 0, "detections": [
+                {"class_id": 1, "confidence": 0.9},
+                {"class_id": 0, "confidence": 0.1},
+            ]},
+            {"frame_index": 2, "detections": []},
+        ]),
+    )
+
+    payload = {key: value for key, value in vars(result).items() if key != "output_video"}
+    diagnostics = payload["detection_diagnostics"]
+    assert diagnostics["total_detections"] == 2
+    assert diagnostics["detections_by_class"] == {"0": 1, "1": 1}
+    assert diagnostics["frames_with_detections"] == 1
+    assert diagnostics["sampled_frame_density"] == [{
+        "frame_index": 0,
+        "detection_count": 2,
+        "class_counts": {"0": 1, "1": 1},
+    }]
+    assert [bin_["count"] for bin_ in diagnostics["confidence_histogram"]["bins"]] == [1, 0, 0, 0, 1]
+
+
+def test_detection_diagnostics_sampling_is_bounded_and_json_safe():
+    frames = [{"frame_index": index, "detections": [{"class_id": 1, "confidence": 0.5}]} for index in range(250)]
+
+    diagnostics = lab_core.aggregate_detection_diagnostics(frames, max_samples=7)
+
+    assert len(diagnostics["sampled_frame_density"]) == 7
+    assert diagnostics["sampled_frame_density"][0]["frame_index"] == 0
+    assert diagnostics["sampled_frame_density"][-1]["frame_index"] == 249
+    json.dumps(diagnostics)
+
+
 def test_job_progress_snapshot_is_truthful_and_bounded():
     job = lab_server._new_job()
 

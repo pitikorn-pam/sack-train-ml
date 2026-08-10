@@ -97,6 +97,64 @@ class LabResult:
     video_height: int = 0
     fps: float = 0.0
     frame_count: int = 0
+    detection_diagnostics: dict = field(default_factory=dict)
+
+
+DETECTION_DIAGNOSTIC_BINS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+MAX_DIAGNOSTIC_FRAME_SAMPLES = 100
+
+
+def aggregate_detection_diagnostics(frame_records, *, max_samples: int = MAX_DIAGNOSTIC_FRAME_SAMPLES) -> dict:
+    """Aggregate detector-loop observations without inferring model quality.
+
+    ``frame_records`` contains only backend observations: each item has a
+    ``frame_index`` and a list of detections with ``class_id`` and
+    ``confidence``.  The result intentionally contains counts and a
+    confidence histogram, not accuracy-like metrics.  Sampled density is
+    evenly selected from frames that contain detections and is bounded so a
+    long replay cannot create an unbounded JSON response.
+    """
+    frame_records = list(frame_records)
+    if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples < 1:
+        raise ValueError("max_samples must be a positive integer")
+    bins = [{"lower": low, "upper": high, "count": 0}
+            for low, high in zip(DETECTION_DIAGNOSTIC_BINS, DETECTION_DIAGNOSTIC_BINS[1:])]
+    by_class: dict[str, int] = {}
+    density = []
+    total_detections = 0
+    for record in frame_records:
+        frame_index = int(record["frame_index"])
+        detections = record.get("detections") or []
+        class_counts: dict[str, int] = {}
+        for detection in detections:
+            class_id = int(detection["class_id"])
+            class_key = str(class_id)
+            class_counts[class_key] = class_counts.get(class_key, 0) + 1
+            by_class[class_key] = by_class.get(class_key, 0) + 1
+            confidence = float(detection["confidence"])
+            if not math.isfinite(confidence):
+                raise ValueError("detection confidence must be finite")
+            confidence = min(1.0, max(0.0, confidence))
+            bin_index = min(len(bins) - 1, int(confidence * len(bins)))
+            bins[bin_index]["count"] += 1
+            total_detections += 1
+        if detections:
+            density.append({
+                "frame_index": frame_index,
+                "detection_count": len(detections),
+                "class_counts": dict(sorted(class_counts.items())),
+            })
+
+    if len(density) > max_samples:
+        indices = [int(i * (len(density) - 1) / (max_samples - 1)) for i in range(max_samples)]
+        density = [density[index] for index in indices]
+    return {
+        "total_detections": total_detections,
+        "detections_by_class": dict(sorted(by_class.items())),
+        "confidence_histogram": {"bins": bins},
+        "frames_with_detections": sum(1 for record in frame_records if record.get("detections")),
+        "sampled_frame_density": density,
+    }
 
 
 def side_of_line(point: tuple[float, float], line: tuple[float, float, float, float]) -> int:
@@ -472,6 +530,7 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
     writer = cv2.VideoWriter(raw, cv2.VideoWriter_fourcc(*"mp4v"), fps / max(1, cfg.frame_stride), (w, h))
 
     fi, n_written, max_sack, sum_sack = -1, 0, 0, 0
+    frame_records = []
     end = cfg.frame_end or 10**12
     while True:
         ok, frame = cap.read()
@@ -487,11 +546,13 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
         res = model.predict(frame, conf=cfg.conf, iou=cfg.iou, classes=list(cfg.classes),
                             device=cfg.device, verbose=False)[0]
         n_sack = 0
+        frame_detections = []
         sack_detections = []
         for b in res.boxes:
             c = int(b.cls); cf = float(b.conf); x1, y1, x2, y2 = map(int, b.xyxy[0])
             col = COLORS.get(c, (0, 255, 0))
             centroid = ((x1 + x2) * 0.5, (y1 + y2) * 0.5)
+            frame_detections.append({"class_id": c, "confidence": cf})
             excluded_zone = next((z for z in exclusion_zones
                                   if z["enabled"] and point_in_polygon(centroid, z["points"])), None)
             if excluded_zone is not None and c in (0, 1):
@@ -509,6 +570,7 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
         frame_events = tracker.update(fi, sack_detections, line, cfg.inflip, cfg.conf_split,
                                       round(fi * 1000.0 / fps), exclusion_zones) if tracker else []
         events.extend(frame_events)
+        frame_records.append({"frame_index": fi, "detections": frame_detections})
         if line:
             x1, y1, x2, y2 = line
             cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -541,6 +603,7 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
         raise ValueError(f"ffmpeg encoding failed: {detail}")
 
     summary = summarize_events(events, cfg.ground_truth, cfg.tolerance_pct) if line else {}
+    detection_diagnostics = aggregate_detection_diagnostics(frame_records)
     return LabResult(
         output_video=out,
         frames_processed=n_written,
@@ -552,5 +615,5 @@ def run_inference(video_path: str, cfg: LabConfig, progress=None) -> LabResult:
         recovered=summary["recovered"] if line else None,
         per_crossing=events if line else [], events=events if line else [],
         summary=summary, config=asdict(cfg), video_width=w, video_height=h,
-        fps=float(fps), frame_count=total,
+        fps=float(fps), frame_count=total, detection_diagnostics=detection_diagnostics,
     )

@@ -195,6 +195,7 @@ def build_run_manifest(*, run_id: str, created_at: str, result: lab_core.LabResu
                 "provenance_fields": sorted({key for event in events for key in (event.get("provenance") or {})}),
             },
         },
+        "detection_diagnostics": result.detection_diagnostics,
         "output": {"video_id": video_id, "video_url": video_url},
     }
     return manifest

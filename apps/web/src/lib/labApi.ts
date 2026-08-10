@@ -259,6 +259,22 @@ export type LabConfig = {
   // Experimental fields are retained in the config contract but are not wired by v0 backend.
 };
 
+export type DetectionConfidenceBin = {
+  /** Inclusive lower edge supplied by the backend. */
+  lower: number;
+  /** Exclusive upper edge supplied by the backend. */
+  upper: number;
+  count: number;
+};
+
+export type DetectionDiagnostics = {
+  total_detections: number;
+  detections_by_class: Record<string, number>;
+  confidence_histogram: { bins: DetectionConfidenceBin[] };
+  frames_with_detections: number;
+  sampled_frame_density: unknown[];
+};
+
 export type LabResult = {
   video_id: string;
   video_url: string;
@@ -270,6 +286,8 @@ export type LabResult = {
   flagged: number | null;
   recovered: number | null;
   per_crossing: unknown[];
+  /** Backend-owned detector diagnostics; absent means this backend cannot provide them. */
+  diagnostics?: DetectionDiagnostics;
   config: Record<string, unknown>;
   // v1 research-contract fields; optional to preserve v0 responses.
   video_width?: number;
