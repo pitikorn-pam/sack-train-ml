@@ -25,6 +25,11 @@ DEFAULT_TRAIN_KWARGS: dict[str, Any] = {
     "batch": "auto",
     "patience": 20,
     "lr0": 0.001,
+    # ultralytics' optimizer="auto" default picks the experimental "muon"
+    # optimizer, which crashes on non-contiguous grad tensors (RuntimeError:
+    # view size is not compatible ...) on some conv layers. Pin a stable
+    # optimizer; a run's own hyperparameters can still override this.
+    "optimizer": "AdamW",
 }
 
 
