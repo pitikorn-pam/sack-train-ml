@@ -278,7 +278,19 @@ def _maybe_compile_hef(
         venv_py = ensure_dfc_venv(wheel_local, copts.get("venv_dir", "/content/hailo_venv"))
 
         calib_n = int(copts.get("calib_n", 512))
-        calib_dir = build_calib_dir(dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=calib_n)
+        # Default calib source is the training/val split (proof-grade — proves the
+        # pipeline, not production accuracy). A ``calib_dir`` override lets a run
+        # point at real curated edge/onsite frames instead, which is what
+        # optimization_level=2's extra bias-correction actually needs to calibrate
+        # against — see build_calib_dir()'s own docstring on this gap.
+        calib_override = copts.get("calib_dir")
+        if calib_override:
+            calib_dir = Path(calib_override).expanduser()
+            if not calib_dir.is_dir():
+                raise FileNotFoundError(f"compile_options.calib_dir not found: {calib_dir}")
+            client.log_step(run_id, 7, "compile", "info", f"calib source: override dir {calib_dir}")
+        else:
+            calib_dir = build_calib_dir(dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=calib_n)
 
         size = _imgsz(config)
         net_name = copts.get("net_name", "yolov11s_sack")
