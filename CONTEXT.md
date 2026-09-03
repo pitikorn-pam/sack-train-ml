@@ -18,7 +18,16 @@ Wherever a run's training actually happens. Today that is a Google Colab session
 A named lineage of models that serve the same purpose on the same target, e.g. `yolo11s-sack-hailo8l`. Runs belong to a model line; versions are promoted within it.
 
 **Run**:
-One training execution — a config, the metrics it streamed, and the artifacts it produced.
+One parameterised execution — a config, what it emitted while working, and the artifacts it produced. Runs come in kinds.
+
+**Train run**:
+A run that fits a model, producing `.pt` and `.onnx`.
+
+**Compile run**:
+A run that turns a train run's `.onnx` into a `.hef` for a target device. It names the run it consumes as its **source run**, so a model can be compiled several ways without being retrained.
+
+**Launcher**:
+The notebook that starts a run on an executor. It receives a run id and nothing else — configuration is read from the registry, never held in the notebook.
 
 **Run config**:
 The stored JSON description of what a run should do: dataset, classes, source weights, hyperparameters, export options and compile options. Written once when the run is created, then read by both the notebook and the pipeline.
@@ -47,8 +56,11 @@ The free-form area for parameters with no first-class field, checked against the
 A checkpoint this repo can carry all the way to a Hailo-8L `.hef`. Everything else is **train-only** — trainable, but never producing an edge artifact.
 _Avoid_: supported model
 
+**Calibration set**:
+The images a compile run measures the model's activations against in order to quantize it. A named, stored artifact addressed by key — never a filesystem path, because two compiles can only be compared if they can be shown to have used the same images.
+
 **Proof-grade calibration set**:
-Calibration images sampled from the run's own training data. Enough to prove the compile pipeline works end to end; not enough to trust the resulting INT8 accuracy.
+A calibration set sampled from the run's own training data. Enough to prove the compile pipeline works end to end; not enough to trust the resulting INT8 accuracy.
 
 **Production calibration set**:
-Calibration images drawn from the deployment domain — real frames from the edge camera, in the conditions the model will actually meet.
+A calibration set drawn from the deployment domain — real frames from the edge camera, in the conditions the model will actually meet.

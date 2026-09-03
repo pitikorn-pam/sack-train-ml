@@ -2,11 +2,17 @@
 
 Type: grilling
 Status: open
-Blocked by: 01, 02, 03, 11
+Blocked by: 01, 02, 03
+
+<!-- 11 was listed here and has been removed: the sigmoid answer decides one row of the
+     parameter table, not the shape of the decision. That row stays conditional on 11. -->
+
 
 ## Question
 
 The chosen approach is a **curated core plus a validated escape hatch**. This ticket draws the line.
+
+*Simplified by [08](./08-compile-notebook-and-recompile-flow.md):* a compile is now its own run kind, so train hyperparameters and `compile_options` belong to **two different forms**. This ticket no longer has to fit both onto one page — it decides each form's contents separately, and the cross-field rules that span them (a train-only checkpoint, a calibration set that suits `opt_level`) become rules *between* the two runs rather than inside one config.
 
 Today the form exposes `epochs, imgsz, batch, patience, lr0` (`NewRun.tsx:45-51`) plus `compile_hef, opt_level, calib_n, wheel_key`, while the pipeline reads more than that — `compile_options` alone also honours `scores_th, iou_th, max_per_class, reg_len, net_name, venv_dir` and the newly added `calib_dir` (`scripts/train_for_run.py:271-311`), none of which the UI can set.
 
