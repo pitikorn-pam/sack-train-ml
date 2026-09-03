@@ -18,6 +18,13 @@ The spec is the finish line. Implementing it is a separate effort.
 
 **Skills every session should consult.** `grilling` and `domain-modeling`. See also `CONTEXT.md` at the repo root for the glossary this effort is building.
 
+**The horizon this sits inside** (settled 2026-09-03, and deliberately *not* the destination). The long-term shape is a **Lab**: a place to configure, launch and compare training and compile runs. Current focus stays on **train + compile**, so the horizon informs taste, not scope. Four framing decisions taken with it:
+
+- *"Lab" names the platform.* The existing video-replay tab is renamed **Replay** — one instrument inside the Lab, not the Lab itself. See `CONTEXT.md`.
+- *Colab stays the executor.* Not a reluctant default: it is chosen, and the design rule that keeps the option open costs nothing — **a notebook is a launcher, never a config holder**. `train_run.ipynb` already obeys this (it takes only `?run_id=` and pulls the rest from the registry); `compile_run.ipynb`'s hand-edited config cell is the violation.
+- *Generalise for more model lines, not more frameworks.* Design fully for a second model line on the same YOLO→Hailo path; leave a thin seam at the compile/target layer; build nothing for other training frameworks until a second one actually exists (`README.md` North Star, and the parent `CLAUDE.md` rule against unrequested flexibility).
+- *The parameter UI is the deliverable that matters most.* Complete, correct inputs on the form come before anything else the Lab might eventually do.
+
 **Standing preferences.**
 - Plan, don't do — every ticket resolves a *decision*. If a session feels the pull to start implementing, that is the signal the map has reached its edge.
 - Evidence before claims. This repo's parent `CLAUDE.md` carries an Experiment Discipline section written because "claim-before-verify" recurred in 9 of 9 recorded sessions. Name the `file:line` or command output behind any assertion; mark anything unverified as unverified.
@@ -51,4 +58,5 @@ Both share one root: **the parameter surface is not a contract**. Defaults live 
 - **The Overview / Models / Storage tabs** — not part of launching a run.
 - **Designing the INT8-vs-FP32 quality gate** — this spec requires only that a measurement exists and travels with the HEF. How it is measured and what threshold passes is its own effort.
 - **Building the YOLO26 compile pipeline.** The owner has decided YOLO26 keeps its place and gets its own path rather than being dropped ([12](./issues/12-interim-remove-undeployable-options.md)). Its 4-channel box head cannot use the on-chip `meta_arch=yolov8` NMS, so it needs raw output plus a matching host-side decoder — and that decoder lives in `sack-detector-edge`, which this repo explicitly does not own (`AGENTS.md`). It is therefore its own effort, requiring a cross-repo contract, not a ticket here. What *does* stay on this map is how the parameter contract expresses more than one compile path ([06](./issues/06-fields-vs-escape-hatch.md)).
+- **Making "experiment" a first-class object.** Today there is no way to say "these three runs are one ablation differing only in `opt_level`" — the registry holds `runs` and nothing groups them (`model_lines, runs, run_metrics, versions, channels, channel_deployments, channel_history`), so the parent `CLAUDE.md` rule of one-changed-lever-per-run cannot actually be *practised* in the system; the pairing lives in someone's head. This is the widest gap between "a webapp that trains" and a Lab, and it belongs to the horizon — the current focus is train + compile.
 - **Implementing the spec** — this map ends at decisions.

@@ -4,6 +4,16 @@ The training-side pipeline for BSCP sack detection: a model is trained on Colab,
 
 ## Language
 
+**Lab**:
+The platform as a whole — the web app, the registry behind it, and the executors it drives. Its job is to make training and compiling a model something you configure, launch and compare, rather than something you hand-run.
+_Avoid_: the dashboard, the webapp
+
+**Replay**:
+The tool that re-runs a recorded video through the counting pipeline to inspect what the model and counter did, frame by frame. It is one instrument inside the Lab, not the Lab itself — it was called "Lab" before that name was given to the platform.
+
+**Executor**:
+Wherever a run's training actually happens. Today that is a Google Colab session driven by a launcher notebook; the Lab holds the configuration, the executor only borrows it for the duration of a run.
+
 **Model line**:
 A named lineage of models that serve the same purpose on the same target, e.g. `yolo11s-sack-hailo8l`. Runs belong to a model line; versions are promoted within it.
 
