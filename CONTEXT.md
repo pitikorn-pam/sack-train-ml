@@ -1,0 +1,44 @@
+# sack-train-ml
+
+The training-side pipeline for BSCP sack detection: a model is trained on Colab, exported to ONNX, and compiled to a Hailo-8L `.hef` that the edge device runs. This glossary fixes the vocabulary for how a training run is described, launched, and traced.
+
+## Language
+
+**Model line**:
+A named lineage of models that serve the same purpose on the same target, e.g. `yolo11s-sack-hailo8l`. Runs belong to a model line; versions are promoted within it.
+
+**Run**:
+One training execution — a config, the metrics it streamed, and the artifacts it produced.
+
+**Run config**:
+The stored JSON description of what a run should do: dataset, classes, source weights, hyperparameters, export options and compile options. Written once when the run is created, then read by both the notebook and the pipeline.
+_Avoid_: settings, params blob
+
+**Requested config**:
+The run config exactly as submitted by the person launching the run.
+
+**Effective config**:
+The values the pipeline actually called training and compilation with, after defaults were merged in. It differs from the requested config wherever a default filled a gap — which is why only the effective config can be trusted as a record of what happened.
+_Avoid_: final config, resolved params
+
+**Silent default**:
+A value that changes a run's outcome without appearing anywhere the person launching it can see. Named after ultralytics' `optimizer="auto"` selecting an experimental optimizer that no one had chosen and no one could see.
+
+**Parameter contract**:
+The guarantee that a parameter offered in the form is the parameter the pipeline honours, and that nothing outside that surface alters the outcome.
+
+**First-class field**:
+A parameter given its own labelled control, validation and help text in the form, because changing it is a normal part of an experiment here.
+
+**Escape hatch**:
+The free-form area for parameters with no first-class field, checked against the real argument list before a run is accepted.
+
+**Compile-capable model**:
+A checkpoint this repo can carry all the way to a Hailo-8L `.hef`. Everything else is **train-only** — trainable, but never producing an edge artifact.
+_Avoid_: supported model
+
+**Proof-grade calibration set**:
+Calibration images sampled from the run's own training data. Enough to prove the compile pipeline works end to end; not enough to trust the resulting INT8 accuracy.
+
+**Production calibration set**:
+Calibration images drawn from the deployment domain — real frames from the edge camera, in the conditions the model will actually meet.
