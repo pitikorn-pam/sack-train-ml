@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BSCP sack-train-ml — New Training Run</title>
+<style>
+:root{
+  --primary:#087fb9; --primary-700:#056995; --primary-soft:#eaf6fb;
+  --ink:#0b1324; --text:#273449; --muted:#68758a; --muted-2:#98a2b3;
+  --line:#e4e9ef; --line-2:#eef2f6; --surface:#ffffff; --soft:#f7f9fb; --soft-2:#f1f5f8;
+  --success:#11875d; --success-soft:#e8f7f0; --warn:#c57a0a; --warn-soft:#fff6df; --danger:#c43f4f; --danger-soft:#fff0f2;
+  --dark:#0d1c2e; --shadow:0 12px 30px rgba(16,38,66,.08);
+  --radius:12px; --radius-sm:8px; --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--soft);color:var(--text);font-family:var(--font);font-size:14px}
+button,input,select{font:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(8,127,185,.18);outline-offset:1px}
+
+/* App chrome */
+.header{height:64px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 26px;gap:28px;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:10px;min-width:220px}.logo{width:34px;height:34px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:800;letter-spacing:.02em}
+.brand-kicker{font-size:10px;letter-spacing:.11em;font-weight:800;color:var(--muted-2)}.brand-name{font-weight:700;color:var(--ink);font-size:15px}
+.nav{display:flex;gap:4px}.nav a{text-decoration:none;color:var(--muted);padding:8px 12px;border-radius:8px;font-weight:600;font-size:13px}.nav a.active{color:var(--primary-700);background:var(--primary-soft)}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:12px}.account{border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-family:var(--mono);font-size:11.5px;background:#fff}.admin{font-family:var(--font);font-weight:800;font-size:9px;color:#8a5a0a;background:#fff2c9;border-radius:5px;padding:2px 5px;margin-left:5px}
+.signout{border:1px solid var(--line);background:#fff;padding:7px 11px;border-radius:8px;color:var(--muted)}
+.subnav{height:43px;background:#fff;border-bottom:1px solid var(--line);display:flex;padding:0 26px;gap:22px}.subnav span{display:flex;align-items:center;color:var(--muted);font-weight:600;font-size:12.5px;border-bottom:2px solid transparent}.subnav .active{color:var(--primary-700);border-bottom-color:var(--primary)}
+
+/* Page */
+.page{max-width:1480px;margin:0 auto;padding:20px 24px 72px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}.page-head h1{margin:0;color:var(--ink);font-size:22px;letter-spacing:-.02em}.page-head p{margin:5px 0 0;color:var(--muted);font-size:13px}.page-actions{display:flex;gap:9px}
+.btn{border:1px solid transparent;border-radius:9px;padding:9px 14px;font-weight:700;font-size:12.5px;background:var(--primary);color:#fff}.btn:hover{background:var(--primary-700)}.btn.secondary{background:#fff;color:var(--text);border-color:var(--line)}.btn.secondary:hover{background:var(--soft)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:18px;align-items:start}
+.main{display:flex;flex-direction:column;gap:14px}.aside{position:sticky;top:127px;display:flex;flex-direction:column;gap:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 2px rgba(16,24,40,.02);overflow:hidden}.card-head{padding:14px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px}.card-head .step{width:24px;height:24px;border-radius:7px;background:var(--primary-soft);color:var(--primary-700);display:grid;place-items:center;font-weight:800;font-size:11px}.card-head h2{margin:0;color:var(--ink);font-size:14px}.card-head p{margin:2px 0 0;color:var(--muted);font-size:11.5px}.card-body{padding:16px}
+.section-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2);font-weight:800;margin-bottom:8px}
+
+/* Controls */
+.field{display:flex;flex-direction:column;gap:5px}.field label,.label{font-size:11.5px;font-weight:750;color:var(--text)}.hint{font-size:10.5px;color:var(--muted);line-height:1.45}.req{color:var(--danger)}
+.input,.select{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;color:var(--ink);font-size:12.5px}.input:hover,.select:hover{border-color:#cad3dd}.input[readonly]{background:var(--soft);color:var(--muted);font-family:var(--mono);font-size:11.5px}.input.valid{border-color:#b9dfcd;background:#fbfefc}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.divider{height:1px;background:var(--line-2);margin:16px 0}
+.segment{display:inline-flex;padding:3px;border-radius:9px;background:var(--soft-2);gap:2px}.segment button{border:0;background:transparent;color:var(--muted);padding:7px 12px;border-radius:7px;font-size:11.5px;font-weight:700}.segment button.active{background:#fff;color:var(--primary-700);box-shadow:0 1px 3px rgba(16,24,40,.08)}
+.task-row{display:flex;gap:7px;flex-wrap:wrap}.chip{border:1px solid var(--line);background:#fff;color:var(--muted);padding:7px 10px;border-radius:999px;font-size:11px;font-weight:700}.chip.active{background:var(--primary-soft);border-color:#a9d8eb;color:var(--primary-700)}.chip .new{font-size:8px;color:#5a4aa2;background:#eeebff;padding:2px 4px;border-radius:4px;margin-left:4px}
+
+/* Model cards */
+.model-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:9px}.model-card{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px;min-height:96px;text-align:left;position:relative}.model-card:hover{border-color:#b9ccd8;box-shadow:0 4px 12px rgba(16,38,66,.06)}.model-card.active{border:1.5px solid var(--primary);background:#f8fcfe;box-shadow:0 0 0 3px rgba(8,127,185,.08)}.model-card .size{font-size:18px;font-weight:800;color:var(--ink);text-transform:uppercase}.model-card .name{font-size:10px;font-weight:700;color:var(--muted);margin-top:2px}.model-card .meta{font-size:9.5px;color:var(--muted);margin-top:8px;line-height:1.45}.model-card .check{display:none;position:absolute;right:8px;top:8px;width:18px;height:18px;border-radius:999px;background:var(--primary);color:#fff;place-items:center;font-size:10px}.model-card.active .check{display:grid}
+.selected-strip{margin-top:10px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--soft);display:flex;align-items:center;gap:10px}.selected-strip code{font-family:var(--mono);font-size:11.5px;color:var(--ink);font-weight:700}.selected-strip .official{margin-left:auto;font-size:9.5px;background:var(--success-soft);color:var(--success);border-radius:999px;padding:4px 7px;font-weight:800}
+
+/* Dataset */
+.dataset-card{border:1px solid var(--line);border-radius:10px;background:#fbfcfd;padding:12px;display:grid;grid-template-columns:1fr auto;gap:8px 14px}.dataset-title{font-weight:800;color:var(--ink);font-size:12.5px}.dataset-path{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:3px}.badge-ok{align-self:start;background:var(--success-soft);color:var(--success);border-radius:999px;padding:4px 7px;font-size:9px;font-weight:800}.dataset-stats{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:3px}.stat{padding:8px;border-radius:8px;background:#fff;border:1px solid var(--line-2)}.stat b{display:block;color:var(--ink);font-size:12px}.stat span{font-size:9.5px;color:var(--muted)}
+
+/* Presets / numeric controls */
+.presets{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}.preset{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:8px;padding:7px 10px;font-size:10.5px;font-weight:750}.preset.active{border-color:#a9d8eb;background:var(--primary-soft);color:var(--primary-700)}
+.stepper{height:38px;border:1px solid var(--line);border-radius:8px;display:grid;grid-template-columns:34px 1fr 34px;overflow:hidden}.stepper button{border:0;background:var(--soft);color:var(--muted);font-size:16px}.stepper input{border:0;min-width:0;text-align:center;color:var(--ink);font-weight:700}.stepper input:focus{outline:0}
+
+/* Advanced */
+details.advanced{border:1px solid var(--line);border-radius:10px;background:#fbfcfd}details.advanced summary{list-style:none;padding:11px 12px;cursor:pointer;font-size:11.5px;font-weight:800;color:var(--text);display:flex;align-items:center;justify-content:space-between}details.advanced summary::-webkit-details-marker{display:none}.adv-body{border-top:1px solid var(--line-2);padding:12px}.mono{font-family:var(--mono)}
+
+/* Compile */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;background:#fbfcfd;padding:11px 12px}.toggle-copy b{display:block;color:var(--ink);font-size:12px}.toggle-copy span{font-size:10.5px;color:var(--muted)}.switch{width:40px;height:22px;border:0;border-radius:999px;background:#bbc5cf;padding:2px}.switch span{display:block;width:18px;height:18px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);transition:.15s}.switch.on{background:var(--primary)}.switch.on span{transform:translateX(18px)}
+.compat{margin-top:12px;border-radius:10px;padding:10px 12px;font-size:11px;display:flex;gap:9px;align-items:flex-start}.compat.ok{background:var(--success-soft);color:#0b6446}.compat.warn{background:var(--warn-soft);color:#8a5b0a}.compat.bad{background:var(--danger-soft);color:#8f3440}.compat b{display:block;margin-bottom:2px}
+
+/* Aside */
+.summary-list{display:grid;grid-template-columns:110px 1fr;gap:7px 10px;font-size:11.5px}.summary-list dt{color:var(--muted)}.summary-list dd{margin:0;color:var(--ink);font-weight:700;min-width:0;overflow-wrap:anywhere}.summary-list code{font-family:var(--mono);font-size:10.5px}.status-stack{display:flex;flex-direction:column;gap:7px}.status{padding:8px 9px;border-radius:8px;font-size:10.5px;font-weight:650}.status.ok{background:var(--success-soft);color:#0b6446}.status.warn{background:var(--warn-soft);color:#855508}.status.neutral{background:var(--soft);color:var(--muted);border:1px solid var(--line-2)}.status.bad{background:var(--danger-soft);color:#8f3440}.btn[disabled]{background:var(--line);color:var(--muted);cursor:not-allowed;border-color:var(--line)}.btn.secondary[disabled]{background:#fff;color:var(--muted-2,#9aa4b2)}.prov{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px;vertical-align:1px;flex:none}.prov.set{background:#f59e0b}.prov.def{background:#ec4899}.prov.der{background:#64748b}.prov-legend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 12px 10px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--line-2)}.prov-legend span{display:flex;align-items:center}.blockbar{margin:0 12px 12px;border-radius:9px;padding:9px 11px;font-size:10.5px;font-weight:650;background:var(--danger-soft);color:#8f3440;display:none}
+.tabbar{display:flex;border-bottom:1px solid var(--line-2);padding:0 12px}.tabbar button{border:0;background:none;padding:10px 8px;margin-right:7px;color:var(--muted);font-size:10.5px;font-weight:800;border-bottom:2px solid transparent}.tabbar button.active{color:var(--primary-700);border-bottom-color:var(--primary)}
+.config-summary{padding:12px}.config-group{margin-bottom:11px}.config-group:last-child{margin-bottom:0}.config-group h4{margin:0 0 5px;color:var(--muted-2);font-size:9px;letter-spacing:.08em;text-transform:uppercase}.config-kv{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:10.5px}.config-kv span:first-child{color:var(--muted)}.config-kv span:last-child{color:var(--ink);font-family:var(--mono);font-weight:700;text-align:right}
+pre{margin:0;padding:12px;background:var(--dark);color:#d8e2ee;font-family:var(--mono);font-size:10px;line-height:1.55;white-space:pre-wrap;overflow:auto;max-height:420px}
+.footer-actions{display:flex;gap:8px}.footer-actions .btn{flex:1}
+
+/* responsive */
+@media(max-width:1120px){.layout{grid-template-columns:1fr}.aside{position:static}.model-grid{grid-template-columns:repeat(5,minmax(100px,1fr))}.header-right .account{display:none}}
+@media(max-width:760px){.header{padding:0 14px}.nav{display:none}.brand{min-width:0}.subnav{padding:0 14px}.page{padding:16px 12px 56px}.page-head{gap:12px}.page-actions{display:none}.grid2,.grid3{grid-template-columns:1fr}.model-grid{grid-template-columns:repeat(2,1fr)}.dataset-stats{grid-template-columns:repeat(2,1fr)}.layout{gap:12px}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="brand"><div class="logo">iP</div><div><div class="brand-kicker">BSCP</div><div class="brand-name">sack-train-ml</div></div></div>
+  <nav class="nav"><a href="#">Overview</a><a class="active" href="#">Train</a><a href="#">Models</a><a href="#">Storage</a><a href="#">Replay</a></nav>
+  <div class="header-right"><div class="account">ipassion@ipassion.co.th <span class="admin">★ ADMIN</span></div><button class="signout">Sign out</button></div>
+</header>
+<div class="subnav"><span class="active">New run</span><span>Live</span><span>Recent</span></div>
+
+<main class="page">
+  <div class="page-head">
+    <div><h1>New training run</h1><p>Configure the experiment once. Training, compile and deployment metadata stay traceable in the same run.</p></div>
+    <div class="page-actions"><button class="btn secondary">Save draft</button><button class="btn" id="createTop">Create training run</button></div>
+  </div>
+
+  <div class="layout">
+    <section class="main">
+      <article class="card">
+        <div class="card-head"><div class="step">1</div><div><h2>Model & dataset</h2><p>Pick an official Ultralytics checkpoint, then bind it to a validated dataset.</p></div></div>
+        <div class="card-body">
+          <div class="grid2">
+            <div class="field"><label>Run name <span class="req">*</span></label><input id="runName" class="input" value="sack-yolo11s-2026-09-04" /></div>
+            <div class="field"><label>Model line</label><input class="input" value="BSCP Sack Detector" readonly /></div>
+          </div>
+          <div class="divider"></div>
+          <div class="section-label">Model family</div>
+          <div class="segment" id="familySeg"><button class="active" data-family="11">YOLO11</button><button data-family="26">YOLO26</button></div>
+          <div style="height:12px"></div>
+          <div class="section-label">Task</div>
+          <div class="task-row" id="taskRow"></div>
+          <div style="height:13px"></div>
+          <div class="section-label">Model size</div>
+          <div class="model-grid" id="modelGrid"></div>
+          <div class="selected-strip"><span style="font-size:10.5px;color:var(--muted)">Selected checkpoint</span><code id="selectedCheckpoint">yolo11s.pt</code><span class="official">OFFICIAL</span></div>
+
+          <div class="divider"></div>
+          <div class="grid2">
+            <div class="field"><label>Dataset <span class="req">*</span></label><select id="datasetSelect" class="select"><option value="sack-v4">sack-dataset-v4 — production split</option><option value="sack-v3">sack-dataset-v3 — previous baseline</option><option value="smoke">sack-smoke-test — 10% subset</option></select></div>
+            <div class="field"><label>Dataset manifest</label><input class="input" value="sack_dataset_sep/data.yaml" readonly /></div>
+          </div>
+          <div style="height:10px"></div>
+          <div class="dataset-card" id="datasetCard">
+            <div><div class="dataset-title">sack-dataset-v4</div><div class="dataset-path">s3://bscp-ml/datasets/sack_dataset_sep/data.yaml</div></div><div class="badge-ok">✓ VALID</div>
+            <div class="dataset-stats"><div class="stat"><b>12,480</b><span>Total images</span></div><div class="stat"><b>9,984</b><span>Train</span></div><div class="stat"><b>2,496</b><span>Validation</span></div><div class="stat"><b>2</b><span>person · sack</span></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head"><div class="step">2</div><div><h2>Training</h2><p>Start from a safe preset, then tune only the parameters that matter for this experiment.</p></div></div>
+        <div class="card-body">
+          <div class="section-label">Training preset</div>
+          <div class="presets" id="presetRow"><button class="preset" data-preset="quick">Quick test</button><button class="preset active" data-preset="balanced">Balanced</button><button class="preset" data-preset="full">Full training</button><button class="preset" data-preset="custom">Custom</button></div>
+          <div class="grid3">
+            <div class="field"><label>Epochs</label><div class="stepper"><button data-step="epochs" data-delta="-10">−</button><input id="epochs" value="250" /><button data-step="epochs" data-delta="10">+</button></div><div class="hint">Recommended baseline: 100–300.</div></div>
+            <div class="field"><label>Image size</label><select id="imgsz" class="select"><option>512</option><option selected>640</option><option>768</option><option>960</option><option>1280</option></select><div class="hint">Compile input inherits this value.</div></div>
+            <div class="field"><label>Batch size</label><select id="batch" class="select"><option selected>auto</option><option>8</option><option>16</option><option>32</option><option>64</option></select><div class="hint">Auto sizes against available GPU memory.</div></div>
+          </div>
+          <div style="height:12px"></div>
+          <div class="grid3">
+            <div class="field"><label>Optimizer</label><select id="optimizer" class="select"><option selected>AdamW</option><option>SGD</option><option>Adam</option><option>auto</option></select><div class="hint">Project default is pinned to AdamW.</div></div>
+            <div class="field"><label>Learning rate</label><input id="lr0" class="input" value="0.001" /></div>
+            <div class="field"><label>Patience</label><input id="patience" class="input" type="number" value="20" min="0" /></div>
+          </div>
+          <div class="divider"></div>
+          <details class="advanced">
+            <summary><span>Advanced parameters</span><span style="color:var(--muted);font-size:10px">reproducibility · augmentation · runtime ▾</span></summary>
+            <div class="adv-body">
+              <div class="grid3">
+                <div class="field"><label>Seed</label><input id="seed" class="input" type="number" value="0" /></div>
+                <div class="field"><label>Deterministic</label><select id="deterministic" class="select"><option selected>true</option><option>false</option></select></div>
+                <div class="field"><label>Save every</label><input id="savePeriod" class="input" type="number" value="25" /></div>
+                <div class="field"><label>Fraction</label><input id="fraction" class="input" value="1.0" /></div>
+                <div class="field"><label>Freeze layers</label><input id="freeze" class="input" value="none" /></div>
+                <div class="field"><label>Workers</label><input id="workers" class="input" type="number" value="8" /></div>
+                <div class="field"><label>Mosaic</label><input id="mosaic" class="input" value="1.0" /></div>
+                <div class="field"><label>Close mosaic</label><input id="closeMosaic" class="input" type="number" value="10" /></div>
+                <div class="field"><label>Weight decay</label><input id="weightDecay" class="input" value="0.0005" /></div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head"><div class="step">3</div><div><h2>Compile & deploy</h2><p>Optional Hailo compile is tracked as a separate downstream run with its own evidence.</p></div></div>
+        <div class="card-body">
+          <div class="toggle-row"><div class="toggle-copy"><b>Compile automatically after training</b><span>Create a compile run only after training succeeds.</span></div><button class="switch on" id="compileSwitch" aria-label="Toggle compile"><span></span></button></div>
+          <div id="compileFields" style="margin-top:12px">
+            <div class="grid3">
+              <div class="field"><label>Target device</label><select class="select" id="target"><option selected>Hailo-8L</option><option>Hailo-8</option></select></div>
+              <div class="field"><label>Optimization</label><select class="select" id="optLevel"><option selected>0 — basic quantization</option><option>2 — finetune / QAT path</option></select></div>
+              <div class="field"><label>Input shape</label><input id="inputShape" class="input" value="640 × 640 × 3" readonly /></div>
+            </div>
+            <div style="height:12px"></div>
+            <div class="grid2">
+              <div class="field"><label>Calibration set</label><select class="select" id="calib"><option selected>onsite-2026-08-31 — 1,024 images</option><option>train-split — proof-grade</option></select></div>
+              <div class="field"><label>Compiler profile</label><input id="compilerProfile" class="input" value="yolo11-det-h8l-v3" readonly /></div>
+            </div>
+            <div class="compat ok" id="compatBox"><span>✓</span><div><b>BSCP pipeline supported</b><span id="compatText">YOLO11 detection has a validated Hailo-8L path in this project mockup.</span></div></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <aside class="aside">
+      <article class="card">
+        <div class="card-head"><div><h2>Run summary</h2><p>Resolved live from the form.</p></div></div>
+        <div class="card-body">
+          <dl class="summary-list">
+            <dt>Run</dt><dd id="sumRun">sack-yolo11s-2026-09-04</dd>
+            <dt>Model</dt><dd id="sumModel">YOLO11s · Detection</dd>
+            <dt>Checkpoint</dt><dd><code id="sumCheckpoint">yolo11s.pt</code></dd>
+            <dt>Dataset</dt><dd id="sumDataset">sack-dataset-v4</dd>
+            <dt>Classes</dt><dd>person, sack</dd>
+            <dt>Image size</dt><dd id="sumImg">640 × 640</dd>
+            <dt>Epochs</dt><dd id="sumEpochs">250</dd>
+            <dt>Preset</dt><dd id="sumPreset">Balanced</dd>
+            <dt>Compile</dt><dd id="sumCompile">Hailo-8L · enabled</dd>
+          </dl>
+          <div class="divider"></div>
+          <div class="status-stack" id="statusStack"><div class="status ok">✓ Dataset manifest validated · 2 classes</div><div class="status ok">✓ Official checkpoint supports train / val / infer / export</div><div class="status ok">✓ BSCP Hailo pipeline available for selected model</div></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="tabbar"><button class="active" data-tab="summary">Summary</button><button data-tab="yaml">YAML</button></div>
+        <div class="prov-legend"><span><i class="prov set"></i>you set it</span><span><i class="prov def"></i>filled from default</span><span><i class="prov der"></i>derived</span></div><div class="blockbar" id="blockBar"></div><div id="configSummary" class="config-summary"></div>
+        <pre id="yamlView" style="display:none"></pre>
+      </article>
+
+      <div class="footer-actions"><button class="btn secondary">Save draft</button><button class="btn" id="createSide">Create run</button></div>
+    </aside>
+  </div>
+</main>
+
+<script>
+const families = {
+  '11': {
+    label:'YOLO11',
+    tasks:[
+      ['detect','Detection',''],['segment','Instance Seg',''],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']
+    ],
+    metrics:{
+      detect:{n:['2.6M','39.5'],s:['9.4M','47.0'],m:['20.1M','51.5'],l:['25.3M','53.4'],x:['56.9M','54.7']},
+      segment:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      classify:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      pose:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      obb:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']}
+    }
+  },
+  '26': {
+    label:'YOLO26',
+    tasks:[
+      ['detect','Detection',''],['segment','Instance Seg',''],['semantic','Semantic Seg','new'],['depth','Depth','new'],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']
+    ],
+    metrics:{
+      detect:{n:['2.4M','40.9'],s:['9.5M','48.6'],m:['20.4M','53.1'],l:['24.8M','55.0'],x:['55.7M','57.5']},
+      segment:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      semantic:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      depth:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      classify:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      pose:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
+      obb:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']}
+    }
+  }
+};
+const sizeNames={n:'Nano · fastest',s:'Small · balanced',m:'Medium',l:'Large',x:'X-Large'};
+const taskSuffix={detect:'',segment:'-seg',semantic:'-sem',depth:'-depth',classify:'-cls',pose:'-pose',obb:'-obb'};
+const taskLabels={detect:'Detection',segment:'Instance Segmentation',semantic:'Semantic Segmentation',depth:'Depth Estimation',classify:'Classification',pose:'Pose / Keypoints',obb:'Oriented Detection'};
+let state={family:'11',task:'detect',size:'s',preset:'balanced',compile:true};
+
+function checkpoint(){ const f=state.family==='11'?'yolo11':'yolo26'; return `${f}${state.size}${taskSuffix[state.task]}.pt`; }
+function modelTitle(){ return `${families[state.family].label}${state.size} · ${taskLabels[state.task]}`; }
+
+function renderTasks(){
+  const row=document.getElementById('taskRow'); row.innerHTML='';
+  families[state.family].tasks.forEach(([key,label,isNew])=>{ const b=document.createElement('button'); b.className='chip'+(state.task===key?' active':''); b.dataset.task=key; b.innerHTML=label+(isNew?'<span class="new">NEW</span>':''); b.onclick=()=>{state.task=key; renderAll();}; row.appendChild(b); });
+}
+function renderModels(){
+  const grid=document.getElementById('modelGrid'); grid.innerHTML='';
+  ['n','s','m','l','x'].forEach(size=>{ const m=families[state.family].metrics[state.task]?.[size] || ['—','—']; const b=document.createElement('button'); b.className='model-card'+(state.size===size?' active':''); b.innerHTML=`<span class="check">✓</span><div class="size">${size}</div><div class="name">${sizeNames[size]}</div><div class="meta">${m[0]} params<br>${m[1]==='—'?'official scale':'COCO mAP '+m[1]}</div>`; b.onclick=()=>{state.size=size; renderAll();}; grid.appendChild(b); });
+}
+function projectCompatibility(){
+  // level: ok | warn | bad.  "bad" means KNOWN BROKEN TODAY — refuse, do not caution.
+  if(state.family==='26') return {level:'bad',blocked:true,
+    title:'Cannot reach a working HEF — YOLO26 pipeline not built',
+    text:"YOLO26's box head emits 4 channels; the edge decoder requires a 64-channel DFL box. Training, export and compile all report success and the device then counts zero. A separate YOLO26 compile path is a decided but unbuilt effort.",
+    profile:'unsupported', status:'⛔ YOLO26 → Hailo-8L produces an undeployable HEF'};
+  if(state.task==='pose'||state.task==='obb') return {level:'bad',blocked:true,
+    title:'Compiles with the keypoint branch silently removed',
+    text:'The head detector classifies this as detection, so it is given on-chip NMS and the extra branch is dropped without an error. Verified against yolo11n-pose.',
+    profile:'unsupported', status:'⛔ '+taskLabels[state.task]+' loses its extra branch in compile'};
+  if(state.family==='11' && state.task==='detect') return {level:'ok',blocked:false,
+    title:'BSCP pipeline supported',
+    text:'YOLO11 detection has a validated Hailo-8L path: 64-channel DFL box, on-chip NMS via meta_arch=yolov8.',
+    profile:'yolo11-det-h8l-v3', status:'✓ BSCP Hailo pipeline available for selected model'};
+  if(state.family==='11' && state.task==='segment') return {level:'warn',blocked:false,
+    title:'Host-side decode required',
+    text:'Compiles on the raw path; mask decode stays on the host, which costs frame rate on the device.',
+    profile:'yolo11-seg-h8l-hostdecode', status:'⚠ Segmentation uses host-side mask decode'};
+  return {level:'warn',blocked:false,
+    title:'Task pipeline not validated',
+    text:'Training is available, but this task has no validated BSCP path to a Hailo-8L artifact.',
+    profile:'not-validated', status:'⚠ BSCP deployment path not yet validated'};
+}
+function datasetStatus(){
+  const v=document.getElementById('datasetSelect').value;
+  return v==='smoke'
+    ? {cls:'warn', text:'⚠ Smoke dataset · 10% subset — not for a production run'}
+    : {cls:'ok',   text:'✓ Dataset manifest validated · 2 classes'};
+}
+function updateGate(){
+  const c=projectCompatibility(); const bar=document.getElementById('blockBar');
+  [['createTop','Create training run'],['createSide','Create run']].forEach(([id,label])=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.disabled=!!c.blocked;
+    el.textContent=c.blocked?'Blocked — cannot deploy this model':label;
+  });
+  bar.style.display=c.blocked?'block':'none';
+  if(c.blocked) bar.textContent='⛔ '+c.title+' — this run cannot be created until a different model or task is chosen.';
+}
+function updateCompat(){
+  const c=projectCompatibility(); const box=document.getElementById('compatBox');
+  box.className='compat '+(c.level==='bad'?'bad':c.level);
+  box.innerHTML=`<span>${c.level==='ok'?'✓':c.level==='bad'?'⛔':'⚠'}</span><div><b>${c.title}</b><span>${c.text}</span></div>`;
+  document.getElementById('compilerProfile').value=c.profile;
+  const d=datasetStatus();
+  document.getElementById('statusStack').innerHTML=
+    `<div class="status ${d.cls}">${d.text}</div>`+
+    `<div class="status ok">✓ Official checkpoint supports train / val / infer / export</div>`+
+    `<div class="status ${c.level==='bad'?'bad':c.level}">${c.status}</div>`;
+  updateGate();
+}
+const PROJECT_DEFAULTS={epochs:'100',imgsz:'640',batch:'auto',optimizer:'AdamW',lr0:'0.001',
+  patience:'20',seed:'0',deterministic:'true',savePeriod:'25',fraction:'1.0',freeze:'none',
+  workers:'8',mosaic:'1.0',closeMosaic:'10',weightDecay:'0.0005'};
+const DERIVED_NOTE={classes:'from the dataset',input_shape:'from imgsz',
+  compiler_profile:'from model + task',model_line:'from the checkpoint'};
+// 'set' = differs from the project default · 'def' = still the default nobody chose · 'der' = a fact, not a choice
+function prov(key,val){ if(!(key in PROJECT_DEFAULTS)) return 'set';
+  return String(val)===PROJECT_DEFAULTS[key] ? 'def' : 'set'; }
+function dot(p){ return `<i class="prov ${p}"></i>`; }
+
+function renderConfig(){
+  const v=getVals(); const c=projectCompatibility();
+  const row=(label,val,p)=>`<div class="config-kv"><span>${dot(p)}${label}</span><span>${val}</span></div>`;
+  document.getElementById('configSummary').innerHTML=`
+    <div class="config-group"><h4>Model</h4>
+      ${row('checkpoint',checkpoint(),'set')}
+      ${row('task',state.task,'set')}
+      ${row('dataset',v.dataset,'set')}
+      ${row('classes','person, sack','der')}
+    </div>
+    <div class="config-group"><h4>Training</h4>
+      ${row('epochs',v.epochs,prov('epochs',v.epochs))}
+      ${row('imgsz',v.imgsz,prov('imgsz',v.imgsz))}
+      ${row('batch',v.batch,prov('batch',v.batch))}
+      ${row('optimizer',v.optimizer,prov('optimizer',v.optimizer))}
+      ${row('lr0',v.lr0,prov('lr0',v.lr0))}
+      ${row('patience',v.patience,prov('patience',v.patience))}
+    </div>
+    <div class="config-group"><h4>Reproducibility</h4>
+      ${row('seed',v.seed,prov('seed',v.seed))}
+      ${row('deterministic',v.deterministic,prov('deterministic',v.deterministic))}
+      ${row('save_period',v.savePeriod,prov('savePeriod',v.savePeriod))}
+      ${row('fraction',v.fraction,prov('fraction',v.fraction))}
+      ${row('ultralytics','8.4.138','der')}
+    </div>
+    <div class="config-group"><h4>Compile</h4>
+      ${row('input_shape',`${v.imgsz} × ${v.imgsz} × 3`,'der')}
+      ${row('compiler_profile',c.profile,'der')}
+    </div>`;
+
+  const M={set:'  # you set it',def:'  # default — nobody typed this',der:'  # derived'};
+  const L=(k,val,p)=>`${(k+':').padEnd(22)}${String(val).padEnd(24)}${M[p]}`;
+  const yaml=['# effective config — what will actually run',
+    L('model',checkpoint(),'set'),
+    L('data','sack_dataset_sep/data.yaml','set'),
+    L('task',state.task,'set'),
+    L('classes','[person, sack]','der'),
+    L('imgsz',v.imgsz,prov('imgsz',v.imgsz)),
+    L('epochs',v.epochs,prov('epochs',v.epochs)),
+    L('batch',v.batch,prov('batch',v.batch)),
+    L('optimizer',v.optimizer,prov('optimizer',v.optimizer)),
+    L('lr0',v.lr0,prov('lr0',v.lr0)),
+    L('patience',v.patience,prov('patience',v.patience)),
+    L('seed',v.seed,prov('seed',v.seed)),
+    L('deterministic',v.deterministic,prov('deterministic',v.deterministic)),
+    L('save_period',v.savePeriod,prov('savePeriod',v.savePeriod)),
+    L('fraction',v.fraction,prov('fraction',v.fraction)),
+    L('freeze',v.freeze,prov('freeze',v.freeze)),
+    L('mosaic',v.mosaic,prov('mosaic',v.mosaic)),
+    L('close_mosaic',v.closeMosaic,prov('closeMosaic',v.closeMosaic)),
+    L('weight_decay',v.weightDecay,prov('weightDecay',v.weightDecay)),
+    L('ultralytics','8.4.138','der'),
+    '',
+    L('compile_after_train',String(state.compile),'set'),
+    L('target',state.compile?'hailo8l':'null','set'),
+    L('input_shape',`${v.imgsz}x${v.imgsz}x3`,'der'),
+    L('optimization_level',state.compile?document.getElementById('optLevel').value.split(' ')[0]:'null','set'),
+    L('calibration_set',state.compile?'onsite-2026-08-31':'null','set'),
+    L('compiler_profile',c.profile,'der'),
+  ].join('\n');
+  document.getElementById('yamlView').textContent=yaml;
+}
+function getVals(){return {dataset:document.getElementById('datasetSelect').selectedOptions[0].text.split(' — ')[0],epochs:document.getElementById('epochs').value,imgsz:document.getElementById('imgsz').value,batch:document.getElementById('batch').value,optimizer:document.getElementById('optimizer').value,lr0:document.getElementById('lr0').value,patience:document.getElementById('patience').value,seed:document.getElementById('seed').value,deterministic:document.getElementById('deterministic').value,savePeriod:document.getElementById('savePeriod').value,fraction:document.getElementById('fraction').value,freeze:document.getElementById('freeze').value,workers:document.getElementById('workers').value,mosaic:document.getElementById('mosaic').value,closeMosaic:document.getElementById('closeMosaic').value,weightDecay:document.getElementById('weightDecay').value};}
+function updateSummary(){
+  const v=getVals(); document.getElementById('selectedCheckpoint').textContent=checkpoint(); document.getElementById('sumCheckpoint').textContent=checkpoint(); document.getElementById('sumModel').textContent=modelTitle(); document.getElementById('sumRun').textContent=document.getElementById('runName').value; document.getElementById('sumDataset').textContent=v.dataset; document.getElementById('sumImg').textContent=`${v.imgsz} × ${v.imgsz}`; document.getElementById('sumEpochs').textContent=v.epochs; document.getElementById('sumPreset').textContent=state.preset[0].toUpperCase()+state.preset.slice(1); document.getElementById('sumCompile').textContent=state.compile?'Hailo-8L · enabled':'Disabled'; document.getElementById('inputShape').value=`${v.imgsz} × ${v.imgsz} × 3`;
+}
+function renderAll(){
+  document.querySelectorAll('#familySeg button').forEach(b=>b.classList.toggle('active',b.dataset.family===state.family));
+  const validTasks=families[state.family].tasks.map(x=>x[0]); if(!validTasks.includes(state.task)) state.task='detect';
+  renderTasks(); renderModels(); updateSummary(); updateCompat(); renderConfig();
+}
+function applyPreset(p){
+  const presets={quick:{epochs:20,imgsz:'640',batch:'auto',optimizer:'AdamW',lr0:'0.001',patience:10,fraction:'0.10'},balanced:{epochs:250,imgsz:'640',batch:'auto',optimizer:'AdamW',lr0:'0.001',patience:20,fraction:'1.0'},full:{epochs:500,imgsz:'640',batch:'auto',optimizer:'AdamW',lr0:'0.001',patience:40,fraction:'1.0'}};
+  state.preset=p; document.querySelectorAll('.preset').forEach(b=>b.classList.toggle('active',b.dataset.preset===p));
+  if(presets[p]){const x=presets[p]; document.getElementById('epochs').value=x.epochs; document.getElementById('imgsz').value=x.imgsz; document.getElementById('batch').value=x.batch; document.getElementById('optimizer').value=x.optimizer; document.getElementById('lr0').value=x.lr0; document.getElementById('patience').value=x.patience; document.getElementById('fraction').value=x.fraction;}
+  updateSummary(); renderConfig();
+}
+function markCustom(){state.preset='custom';document.querySelectorAll('.preset').forEach(b=>b.classList.toggle('active',b.dataset.preset==='custom'));updateSummary();renderConfig();}
+
+document.querySelectorAll('#familySeg button').forEach(b=>b.onclick=()=>{state.family=b.dataset.family;state.task='detect';renderAll();});
+document.querySelectorAll('.preset').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
+document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const el=document.getElementById(b.dataset.step);el.value=Math.max(1,Number(el.value)+Number(b.dataset.delta));markCustom();});
+document.getElementById('compileSwitch').onclick=()=>{state.compile=!state.compile;document.getElementById('compileSwitch').classList.toggle('on',state.compile);document.getElementById('compileFields').style.opacity=state.compile?'1':'.45';document.getElementById('compileFields').style.pointerEvents=state.compile?'auto':'none';updateSummary();renderConfig();};
+document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('active',x===b));const y=b.dataset.tab==='yaml';document.getElementById('yamlView').style.display=y?'block':'none';document.getElementById('configSummary').style.display=y?'none':'block';});
+['runName','epochs','imgsz','batch','optimizer','lr0','patience','seed','deterministic','savePeriod','fraction','freeze','workers','mosaic','closeMosaic','weightDecay','optLevel','datasetSelect'].forEach(id=>{document.getElementById(id).addEventListener('input',()=>{if(!['runName','datasetSelect','optLevel'].includes(id)) markCustom(); else {updateSummary();renderConfig();}});});
+
+document.getElementById('datasetSelect').addEventListener('change',e=>{
+  const key=e.target.value; const data={
+    'sack-v4':['sack-dataset-v4','12,480','9,984','2,496','VALID'],
+    'sack-v3':['sack-dataset-v3','10,920','8,736','2,184','VALID'],
+    'smoke':['sack-smoke-test','1,248','998','250','SMOKE']
+  }[key];
+  const card=document.getElementById('datasetCard'); card.innerHTML=`<div><div class="dataset-title">${data[0]}</div><div class="dataset-path">s3://bscp-ml/datasets/sack_dataset_sep/data.yaml</div></div><div class="badge-ok">${data[4]==='VALID'?'✓ VALID':'⚠ SMOKE'}</div><div class="dataset-stats"><div class="stat"><b>${data[1]}</b><span>Total images</span></div><div class="stat"><b>${data[2]}</b><span>Train</span></div><div class="stat"><b>${data[3]}</b><span>Validation</span></div><div class="stat"><b>2</b><span>person · sack</span></div></div>`;
+});
+
+renderAll();
+</script>
+</body>
+</html>

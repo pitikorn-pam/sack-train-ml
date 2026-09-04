@@ -21,6 +21,22 @@ Built as a standalone file rather than mounted in `apps/web` because the real Tr
 
 Notes for whoever reads the screenshots: variant B's tooltip is rendered permanently open to show what the "i" affordance looks like — in use it appears on hover and would not cover the fields beneath it.
 
+## Round 2 — v2 (external review) and v3 (merge)
+
+The owner took the three variants to a second reviewer, which returned a single converged design. It is better than all three of mine as a *form*, and became the base. The v2 original lives at `~/Downloads/new-run.final-v2.html` and is **not** copied into the repo — the sandbox blocks reads of that directory — so v3 is the only committed descendant of it.
+
+**What v2 got right that v1 did not:** model choice decomposed into family → task → size, with params and COCO mAP per size instead of everything crammed into one dropdown; a dataset card showing real counts and a VALID badge, which is fail-fast made visible; training presets (Quick test / Balanced / Full / Custom) that also give an ablation a named baseline; a run name, which v1 omitted entirely though runs need human identity to be compared; Summary and YAML tabs serving readers and the record separately; a named, versioned compiler profile; and always-visible helper text under each control rather than hover tooltips.
+
+**What v2 softened, and why it mattered:** its compatibility function returned only `ok` or `warn`, so a path this project *knows* is broken — YOLO26, whose 4-channel box head no edge decoder can read, and pose/OBB, which compile with the extra branch silently dropped — was presented as a caution rather than a refusal. And its effective config was a flat dump: `optimizer: AdamW` looked identical whether someone chose it or it was filled in, losing the one thing the whole map exists to establish.
+
+**v3 = v2 plus those two, ported back** — [`prototype/new-run.v3.html`](../prototype/new-run.v3.html), screenshots [ok](../prototype/v3-ok.png) · [yaml](../prototype/v3-yaml.png) · [blocked](../prototype/v3-blocked.png):
+
+1. A third `bad` level that **blocks**: both create buttons disable and relabel, a red bar states the reason, the compiler profile reads `unsupported`, and the explanation names the mechanism (4-channel box versus the required 64-channel DFL) rather than saying "not validated". Verified by driving the page: selecting YOLO26 leaves `#createTop` disabled with no console errors.
+2. **Provenance on every value**, in both tabs — `you set it` / `default — nobody typed this` / `derived` — with a legend. The YAML now renders `optimizer: AdamW  # default — nobody typed this`, which is the Muon incident made visible before launch.
+3. The dataset status line, previously hardcoded to pass, now follows the selected dataset (the smoke subset reports a warning). Note the dataset *card* was already dynamic in v2 — an earlier claim that it was hardcoded was too broad and is corrected here.
+
+Awaiting the owner's verdict on v3 before this ticket closes.
+
 <!-- 05 was listed here and has been removed: a prototype settles form and behaviour;
      where the schema definition lives is a build concern that does not change what
      there is to react to. -->
