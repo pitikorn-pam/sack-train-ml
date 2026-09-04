@@ -1,7 +1,7 @@
 # 12 — Do the undeployable options come out of the dropdown now, or wait for the spec?
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -21,3 +21,13 @@ If the answer is "now", the change is deliberately minimal — no new mechanism,
 **YOLO26 is not to be dropped — it gets its own compile pipeline.** Its 4-channel box head cannot use the on-chip `meta_arch=yolov8` NMS, so it needs the raw path plus a matching host-side decoder, which lives in `sack-detector-edge` and therefore needs a cross-repo contract (this repo explicitly does not own edge runtime decode — see `AGENTS.md`). Building that pipeline is its own effort, recorded under the map's Out of scope; the contract question it raises — that compile-capability is **per path**, not a yes/no — moves into [06](./06-fields-vs-escape-hatch.md).
 
 **Still open, and narrower:** what do the `yolo26*` options do *until* that pipeline exists? Today they train, compile, report success, and count zero on the device. Options: leave them and accept the trap; disable them with "needs the YOLO26 pipeline" shown; or keep them selectable for training while the compile step refuses. Pose and OBB are a separate case — nothing has been decided for them, and they silently lose their keypoint branch.
+
+## Answer
+
+**Disabled with the reason shown — not removed.** Removing them would suggest YOLO26 was never intended; disabling them says both things that are true at once: *not usable today*, and *known, planned*. It also matches the accepted v3 design, where selecting one produces a refusal that names the mechanism rather than a vague caution.
+
+Scope of the interim change, deliberately minimal — no new mechanism, just fewer wrong choices, with [06](./06-fields-vs-escape-hatch.md) still owning how capability is expressed properly:
+
+- `yolo26*` — disabled, reason: needs the YOLO26 compile pipeline (see the map's Out of scope, and the one-to-many-head lead in [03](./03-model-catalogue.md)).
+- pose / OBB — disabled, reason: compiles with the extra branch silently dropped.
+- Everything else keeps its current behaviour.
