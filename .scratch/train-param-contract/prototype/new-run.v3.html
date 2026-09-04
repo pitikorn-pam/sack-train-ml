@@ -65,7 +65,7 @@ details.advanced{border:1px solid var(--line);border-radius:10px;background:#fbf
 .compat{margin-top:12px;border-radius:10px;padding:10px 12px;font-size:11px;display:flex;gap:9px;align-items:flex-start}.compat.ok{background:var(--success-soft);color:#0b6446}.compat.warn{background:var(--warn-soft);color:#8a5b0a}.compat.bad{background:var(--danger-soft);color:#8f3440}.compat b{display:block;margin-bottom:2px}
 
 /* Aside */
-.summary-list{display:grid;grid-template-columns:110px 1fr;gap:7px 10px;font-size:11.5px}.summary-list dt{color:var(--muted)}.summary-list dd{margin:0;color:var(--ink);font-weight:700;min-width:0;overflow-wrap:anywhere}.summary-list code{font-family:var(--mono);font-size:10.5px}.status-stack{display:flex;flex-direction:column;gap:7px}.status{padding:8px 9px;border-radius:8px;font-size:10.5px;font-weight:650}.status.ok{background:var(--success-soft);color:#0b6446}.status.warn{background:var(--warn-soft);color:#855508}.status.neutral{background:var(--soft);color:var(--muted);border:1px solid var(--line-2)}.status.bad{background:var(--danger-soft);color:#8f3440}.btn[disabled]{background:var(--line);color:var(--muted);cursor:not-allowed;border-color:var(--line)}.btn.secondary[disabled]{background:#fff;color:var(--muted-2,#9aa4b2)}.prov{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px;vertical-align:1px;flex:none}.prov.set{background:#f59e0b}.prov.def{background:#ec4899}.prov.der{background:#64748b}.prov-legend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 12px 10px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--line-2)}.prov-legend span{display:flex;align-items:center}.blockbar{margin:0 12px 12px;border-radius:9px;padding:9px 11px;font-size:10.5px;font-weight:650;background:var(--danger-soft);color:#8f3440;display:none}
+.summary-list{display:grid;grid-template-columns:110px 1fr;gap:7px 10px;font-size:11.5px}.summary-list dt{color:var(--muted)}.summary-list dd{margin:0;color:var(--ink);font-weight:700;min-width:0;overflow-wrap:anywhere}.summary-list code{font-family:var(--mono);font-size:10.5px}.status-stack{display:flex;flex-direction:column;gap:7px}.status{padding:8px 9px;border-radius:8px;font-size:10.5px;font-weight:650}.status.ok{background:var(--success-soft);color:#0b6446}.status.warn{background:var(--warn-soft);color:#855508}.status.neutral{background:var(--soft);color:var(--muted);border:1px solid var(--line-2)}.dim{color:var(--muted);font-weight:500}.docs-link{float:right;font-size:10px;color:var(--primary-700);text-decoration:none}.status.bad{background:var(--danger-soft);color:#8f3440}.btn[disabled]{background:var(--line);color:var(--muted);cursor:not-allowed;border-color:var(--line)}.btn.secondary[disabled]{background:#fff;color:var(--muted-2,#9aa4b2)}.prov{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px;vertical-align:1px;flex:none}.prov.set{background:#f59e0b}.prov.def{background:#ec4899}.prov.der{background:#64748b}.prov-legend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 12px 10px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--line-2)}.prov-legend span{display:flex;align-items:center}.blockbar{margin:0 12px 12px;border-radius:9px;padding:9px 11px;font-size:10.5px;font-weight:650;background:var(--danger-soft);color:#8f3440;display:none}
 .tabbar{display:flex;border-bottom:1px solid var(--line-2);padding:0 12px}.tabbar button{border:0;background:none;padding:10px 8px;margin-right:7px;color:var(--muted);font-size:10.5px;font-weight:800;border-bottom:2px solid transparent}.tabbar button.active{color:var(--primary-700);border-bottom-color:var(--primary)}
 .config-summary{padding:12px}.config-group{margin-bottom:11px}.config-group:last-child{margin-bottom:0}.config-group h4{margin:0 0 5px;color:var(--muted-2);font-size:9px;letter-spacing:.08em;text-transform:uppercase}.config-kv{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:10.5px}.config-kv span:first-child{color:var(--muted)}.config-kv span:last-child{color:var(--ink);font-family:var(--mono);font-weight:700;text-align:right}
 pre{margin:0;padding:12px;background:var(--dark);color:#d8e2ee;font-family:var(--mono);font-size:10px;line-height:1.55;white-space:pre-wrap;overflow:auto;max-height:420px}
@@ -101,7 +101,7 @@ pre{margin:0;padding:12px;background:var(--dark);color:#d8e2ee;font-family:var(-
           </div>
           <div class="divider"></div>
           <div class="section-label">Model family</div>
-          <div class="segment" id="familySeg"><button class="active" data-family="11">YOLO11</button><button data-family="26">YOLO26</button></div>
+          <a class="docs-link" id="docsLink" target="_blank" rel="noopener">specs from the official docs ↗</a><div class="segment" id="familySeg"><button class="active" data-family="11">YOLO11</button><button data-family="26">YOLO26</button></div>
           <div style="height:12px"></div>
           <div class="section-label">Task</div>
           <div class="task-row" id="taskRow"></div>
@@ -212,33 +212,32 @@ pre{margin:0;padding:12px;background:var(--dark);color:#d8e2ee;font-family:var(-
 </main>
 
 <script>
+const DOCS={'11':'https://docs.ultralytics.com/models/yolo11','26':'https://docs.ultralytics.com/models/yolo26'};
 const families = {
   '11': {
     label:'YOLO11',
-    tasks:[
-      ['detect','Detection',''],['segment','Instance Seg',''],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']
-    ],
+    // Tasks per the official page: detect, segment, classify, pose, obb. No semantic seg, no depth.
+    tasks:[['detect','Detection',''],['segment','Instance Seg',''],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']],
     metrics:{
-      detect:{n:['2.6M','39.5'],s:['9.4M','47.0'],m:['20.1M','51.5'],l:['25.3M','53.4'],x:['56.9M','54.7']},
-      segment:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      classify:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      pose:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      obb:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']}
+      detect:{n:{p:'2.6M',map:'39.5',f:'6.5'},s:{p:'9.4M',map:'47.0',f:'21.6'},m:{p:'20.1M',map:'51.5',f:'68.1'},l:{p:'25.3M',map:'53.4',f:'87.2'},x:{p:'56.9M',map:'54.7',f:'195.3'}},
+      segment:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      classify:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      pose:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      obb:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}}
     }
   },
   '26': {
     label:'YOLO26',
-    tasks:[
-      ['detect','Detection',''],['segment','Instance Seg',''],['semantic','Semantic Seg','new'],['depth','Depth','new'],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']
-    ],
+    // Tasks per the official page: seven, adding semantic segmentation and depth estimation.
+    tasks:[['detect','Detection',''],['segment','Instance Seg',''],['semantic','Semantic Seg','new'],['depth','Depth','new'],['classify','Classification',''],['pose','Pose',''],['obb','OBB','']],
     metrics:{
-      detect:{n:['2.4M','40.9'],s:['9.5M','48.6'],m:['20.4M','53.1'],l:['24.8M','55.0'],x:['55.7M','57.5']},
-      segment:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      semantic:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      depth:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      classify:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      pose:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']},
-      obb:{n:['—','—'],s:['—','—'],m:['—','—'],l:['—','—'],x:['—','—']}
+      detect:{n:{p:'2.4M',map:'40.9',f:'5.5',e2e:'40.1'},s:{p:'9.5M',map:'48.6',f:'20.9',e2e:'47.8'},m:{p:'20.4M',map:'53.1',f:'68.4',e2e:'52.5'},l:{p:'24.8M',map:'55.0',f:'86.8',e2e:'54.4'},x:{p:'55.7M',map:'57.5',f:'194.4',e2e:'56.9'}},
+      segment:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      semantic:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      depth:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      classify:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      pose:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}},
+      obb:{n:{p:'—',map:'—',f:'—'},s:{p:'—',map:'—',f:'—'},m:{p:'—',map:'—',f:'—'},l:{p:'—',map:'—',f:'—'},x:{p:'—',map:'—',f:'—'}}
     }
   }
 };
@@ -256,13 +255,22 @@ function renderTasks(){
 }
 function renderModels(){
   const grid=document.getElementById('modelGrid'); grid.innerHTML='';
-  ['n','s','m','l','x'].forEach(size=>{ const m=families[state.family].metrics[state.task]?.[size] || ['—','—']; const b=document.createElement('button'); b.className='model-card'+(state.size===size?' active':''); b.innerHTML=`<span class="check">✓</span><div class="size">${size}</div><div class="name">${sizeNames[size]}</div><div class="meta">${m[0]} params<br>${m[1]==='—'?'official scale':'COCO mAP '+m[1]}</div>`; b.onclick=()=>{state.size=size; renderAll();}; grid.appendChild(b); });
+  ['n','s','m','l','x'].forEach(size=>{
+    const m=families[state.family].metrics[state.task]?.[size] || {p:'—',map:'—',f:'—'};
+    const b=document.createElement('button');
+    b.className='model-card'+(state.size===size?' active':'');
+    const perf = m.map==='—'
+      ? '<span class="dim">no published table</span>'
+      : `COCO mAP ${m.map}${m.e2e?` <span class="dim">· ${m.e2e} e2e</span>`:''}<br>${m.f} GFLOPs`;
+    b.innerHTML=`<span class="check">✓</span><div class="size">${size}</div><div class="name">${sizeNames[size]}</div><div class="meta">${m.p} params<br>${perf}</div>`;
+    b.onclick=()=>{state.size=size; renderAll();};
+    grid.appendChild(b); });
 }
 function projectCompatibility(){
   // level: ok | warn | bad.  "bad" means KNOWN BROKEN TODAY — refuse, do not caution.
   if(state.family==='26') return {level:'bad',blocked:true,
     title:'Cannot reach a working HEF — YOLO26 pipeline not built',
-    text:"YOLO26's box head emits 4 channels; the edge decoder requires a 64-channel DFL box. Training, export and compile all report success and the device then counts zero. A separate YOLO26 compile path is a decided but unbuilt effort.",
+    text:"YOLO26 removes Distribution Focal Loss and defaults to an NMS-free one-to-one head, so its box branch is 4 channels — the on-chip meta_arch=yolov8 decoder needs a 64-channel DFL box. Training, export and compile all report success and the device then counts zero. (The docs note a one-to-many head also exists; a YOLO26 path may be buildable through it, but that effort is unbuilt.)",
     profile:'unsupported', status:'⛔ YOLO26 → Hailo-8L produces an undeployable HEF'};
   if(state.task==='pose'||state.task==='obb') return {level:'bad',blocked:true,
     title:'Compiles with the keypoint branch silently removed',
@@ -388,6 +396,7 @@ function updateSummary(){
 function renderAll(){
   document.querySelectorAll('#familySeg button').forEach(b=>b.classList.toggle('active',b.dataset.family===state.family));
   const validTasks=families[state.family].tasks.map(x=>x[0]); if(!validTasks.includes(state.task)) state.task='detect';
+  document.getElementById('docsLink').href=DOCS[state.family];
   renderTasks(); renderModels(); updateSummary(); updateCompat(); renderConfig();
 }
 function applyPreset(p){

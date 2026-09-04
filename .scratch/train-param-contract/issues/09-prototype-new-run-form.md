@@ -1,7 +1,7 @@
 # 09 — Prototype the New-run form under the new contract
 
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: 06
 
 ## Artifact
@@ -35,7 +35,13 @@ The owner took the three variants to a second reviewer, which returned a single 
 2. **Provenance on every value**, in both tabs — `you set it` / `default — nobody typed this` / `derived` — with a legend. The YAML now renders `optimizer: AdamW  # default — nobody typed this`, which is the Muon incident made visible before launch.
 3. The dataset status line, previously hardcoded to pass, now follows the selected dataset (the smoke subset reports a warning). Note the dataset *card* was already dynamic in v2 — an earlier claim that it was hardcoded was too broad and is corrected here.
 
-Awaiting the owner's verdict on v3 before this ticket closes.
+## Answer
+
+**v3 is accepted.** The design is settled: the externally-reviewed form, plus a blocking level that refuses known-broken paths and provenance on every value.
+
+Completed after acceptance — the catalogue was verified against the official Ultralytics pages and made complete: FLOPs added, YOLO26's end-to-end (NMS-free) mAP added as its own column, task lists confirmed to differ between the families (YOLO11 five, YOLO26 seven), "no published table" shown where the docs publish none, and a per-family link to the source page so the numbers are traceable. See [03](./03-model-catalogue.md) for the verified figures and for a new lead on the YOLO26 one-to-many head.
+
+The three original variants and the external v2 remain the primary source of how this was arrived at; only v3 carries forward.
 
 <!-- 05 was listed here and has been removed: a prototype settles form and behaviour;
      where the schema definition lives is a build concern that does not change what

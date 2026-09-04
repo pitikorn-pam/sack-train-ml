@@ -35,5 +35,18 @@ Findings land in `../research/model-catalogue.md` (519 lines, incl. the full per
 
 **The dropdown must be generated against the installed ultralytics, not the docs.** `yolov9c-seg.pt`, `yolov8x-pose-p6.pt` and `yolo26*-depth.pt` appear in documentation but are missing from 8.4.56's `GITHUB_ASSETS_NAMES` — they cannot be downloaded at all. This ties the catalogue to [10](./10-toolchain-pinning.md).
 
+### Catalogue verified against the official pages (2026-09-04)
+
+Checked directly against [docs.ultralytics.com/models/yolo11](https://docs.ultralytics.com/models/yolo11) and [/yolo26](https://docs.ultralytics.com/models/yolo26), and folded into the prototype:
+
+- **Task lists differ between the families, and the earlier numbers were right.** YOLO11 publishes **five** tasks (detect, instance seg, classify, pose, OBB). YOLO26 publishes **seven**, adding **semantic segmentation** and **depth estimation**. Checkpoint suffixes: `-seg`, `-sem`, `-depth`, `-cls`, `-pose`, `-obb`.
+- **Only detection has a published performance table** on either page; every other task shows no numbers, so the catalogue says "no published table" rather than inventing one.
+- Detection figures now carried in full, verbatim, including **FLOPs** — previously missing — and YOLO26's second accuracy column: its **end-to-end (NMS-free) mAP**, which is the number that applies to its default head. YOLO11: 39.5 / 47.0 / 51.5 / 53.4 / 54.7 at 6.5–195.3 GFLOPs. YOLO26: 40.9 / 48.6 / 53.1 / 55.0 / 57.5 with e2e 40.1 / 47.8 / 52.5 / 54.4 / 56.9, at 5.5–194.4 GFLOPs.
+- P2/P6 exist only as YAML configs — **no `yolo26*-p2.pt` or `-p6.pt` weights are released** — so they must never appear as selectable checkpoints.
+
+**The YOLO26 blocking reason is now documented fact rather than inference.** The page states plainly that YOLO26 *"removes Distribution Focal Loss"* and that its default one-to-one head *"produces predictions without non-maximum suppression"*. That is exactly why the on-chip `meta_arch=yolov8` decoder — which expects a 64-channel DFL box — cannot read it.
+
+**And a lead that changes the size of the YOLO26 effort:** the same page states the models *"support both a one-to-one head (NMS-free, default) and a one-to-many head (traditional YOLO with NMS)"*. If the one-to-many head carries the classical DFL box, a YOLO26 → Hailo path may be reachable through it rather than requiring a new host-side decoder. Unverified against a real exported graph — worth checking before that effort is scoped.
+
 **Researcher's recommendation, which conflicts with the stated preference and must be settled in [06](./06-fields-vs-escape-hatch.md):** ship 5 selectable rows (`yolo11*`), 10 disabled-with-reason (`yolov8*`, enabling the day the index fix lands), plus `yolo11s-seg`, and offer nothing else. The owner's stated preference is to list *every* trainable model with compile-capability marked. Both are defensible; the tension is exactly what "compile-capable versus train-only" has to resolve.
 
