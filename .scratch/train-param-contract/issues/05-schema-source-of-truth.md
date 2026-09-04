@@ -14,4 +14,6 @@ Options to weigh: a JSON Schema file in the repo consumed by all three; generati
 
 The test this decision must pass: adding one new tunable parameter should be a single edit, and it should be impossible for the form to disagree with what the pipeline runs.
 
+**Sharpened by [06](./06-fields-vs-escape-hatch.md).** Every field must carry a **default** and **help text saying what it does and what it affects** — the owner asked for this explicitly, as the "i" tooltip beside each control. That makes help text part of the schema rather than of the markup, because the same explanation has to be true in the form, in the effective-config preview, and in whatever records the run. The schema must also carry each parameter's **category** (field / advanced / derived / refused), since "derived" and "refused" are behaviours the form has to render, not conventions a developer remembers.
+
 Depends on [04](./04-where-validation-lives.md) — where validation is enforced determines which runtimes need the schema.

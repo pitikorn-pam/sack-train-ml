@@ -2,7 +2,12 @@
 
 Type: prototype
 Status: open
-Blocked by: 05, 06
+Blocked by: 06
+
+<!-- 05 was listed here and has been removed: a prototype settles form and behaviour;
+     where the schema definition lives is a build concern that does not change what
+     there is to react to. -->
+
 
 ## Question
 
