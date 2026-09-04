@@ -1393,5 +1393,8 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
 .pv3-yaml{font-family:var(--font-mono);font-size:10.5px;line-height:1.6;background:var(--color-surface-dark);color:#cbd5e1;border-radius:9px;padding:11px;overflow:auto;max-height:340px;margin:0}
 .pv3-cfg .button{width:100%;margin-top:12px}
 
-.pv3-check{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--color-body-strong);margin-bottom:14px}
+.pv3-check{display:flex !important;flex-direction:row !important;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--color-body-strong);margin-bottom:14px}
 .pv3-check input{width:16px;height:16px;margin:0;flex:none}
+.pv3-profiles{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:16px}
+.chip.ghost{border-style:dashed;color:var(--color-primary-active)}
+.pv3-ver{opacity:.6;font-size:10px;margin-left:3px}

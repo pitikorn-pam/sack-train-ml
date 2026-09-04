@@ -22,6 +22,10 @@ import { ColabSteps } from "./ColabSteps";
 import { useToast } from "./Toast";
 import { parseYoloYaml } from "../lib/yaml";
 import {
+  loadProfiles, loadDataAssets, saveProfile, registerDataset, slugify,
+  type RunProfile, type DataAsset,
+} from "../lib/profiles";
+import {
   SIZES, schema, paramsFor, capabilityFor, checkpointName, resolveEffective, validate,
   type Param, type Source,
 } from "../lib/schema";
@@ -90,12 +94,58 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
   const [compile, setCompile] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tab, setTab] = useState<"summary" | "yaml">("summary");
+  const [profiles, setProfiles] = useState<RunProfile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<RunProfile | null>(null);
+  const [datasets, setDatasets] = useState<DataAsset[]>([]);
+  const [uploadNew, setUploadNew] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(true);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ runId: string; colabUrl: string } | null>(null);
 
   useEffect(() => {
     supabase.from("model_lines").select("*").then(({ data }) => setModelLines((data ?? []) as ModelLine[]));
   }, []);
+
+  const modelLineId = modelLines[0]?.id ?? null;
+  useEffect(() => {
+    if (!modelLineId) return;
+    let live = true;
+    Promise.all([loadProfiles(modelLineId, "train"), loadDataAssets(modelLineId, "dataset")]).then(
+      ([ps, ds]) => {
+        if (!live) return;
+        setProfiles(ps.rows);
+        setDatasets(ds.rows);
+        // A missing table is not the same as an empty one.
+        setAssetsReady(ps.ok && ds.ok);
+      },
+    );
+    return () => { live = false; };
+  }, [modelLineId]);
+
+  function applyProfile(p: RunProfile) {
+    setActiveProfile(p);
+    setValues((s) => {
+      const next = { ...s };
+      for (const [k, v] of Object.entries(p.values)) next[k] = v === null ? "none" : String(v);
+      return next;
+    });
+  }
+
+  async function saveAsProfile() {
+    if (!modelLineId) return;
+    const name = window.prompt("Name this profile", activeProfile?.display_name ?? "");
+    if (!name) return;
+    try {
+      const version = await saveProfile({
+        modelLineId, slug: slugify(name), displayName: name, form: "train",
+        values: Object.fromEntries(paramsFor("train", "field").map((p) => [p.key, coerce(p, values[p.key])])),
+      });
+      push({ tone: "success", title: `Saved ${name} v${version}`, detail: "Editing a profile adds a version — earlier runs keep their meaning." });
+      setProfiles((await loadProfiles(modelLineId, "train")).rows);
+    } catch (e) {
+      push({ tone: "danger", title: "Could not save profile", detail: (e as Error).message });
+    }
+  }
 
   const fam = schema.families[family];
   const capability = capabilityFor(family, task);
@@ -278,19 +328,74 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
           </div>
 
           <div className="pv3-group">Dataset</div>
-          <DatasetUploader
-            modelLineSlug={slug}
-            onChange={(s: { yamlKey: string | null; bundleKey: string | null; yamlText: string | null }) => {
-              if (s.yamlKey) setDatasetKey(s.yamlKey);
-              if (s.bundleKey !== null) setBundleKey(s.bundleKey);
-              if (s.yamlText) {
+          {datasets.length > 0 && (
+            <label className="pv3-field">
+              <span className="pv3-label">
+                Choose a dataset <Hint text="Datasets are uploaded once and reused. Picking one here binds this run to that exact upload, by key rather than by path." />
+              </span>
+              <select
+                value={datasetKey}
+                onChange={(e) => {
+                  const d = datasets.find((x) => x.manifest_key === e.target.value);
+                  setDatasetKey(e.target.value);
+                  setBundleKey(d?.bundle_key ?? null);
+                }}
+              >
+                <option value="">— pick a dataset —</option>
+                {datasets.map((d) => (
+                  <option key={d.id} value={d.manifest_key ?? ""}>
+                    {d.display_name}
+                    {d.stats.total ? `  ·  ${d.stats.total} images` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <button className="pv3-disclose" onClick={() => setUploadNew((u) => !u)}>
+            {uploadNew ? "▾" : "▸"} {datasets.length > 0 ? "Upload a new dataset instead" : "Upload a dataset"}
+          </button>
+
+          {(uploadNew || datasets.length === 0) && (
+            <DatasetUploader
+              modelLineSlug={slug}
+              onChange={(s: { yamlKey: string | null; bundleKey: string | null; yamlText: string | null }) => {
+                if (s.yamlKey) setDatasetKey(s.yamlKey);
+                if (s.bundleKey !== null) setBundleKey(s.bundleKey);
+                if (s.yamlText) {
+                  try {
+                    const parsed = parseYoloYaml(s.yamlText);
+                    if (parsed.names.length) setClasses(parsed.names);
+                  } catch { /* best effort */ }
+                }
+              }}
+            />
+          )}
+
+          {uploadNew && datasetKey && modelLineId && (
+            <button
+              className="button"
+              onClick={async () => {
+                const name = window.prompt("Name this dataset so it can be reused", "");
+                if (!name) return;
                 try {
-                  const parsed = parseYoloYaml(s.yamlText);
-                  if (parsed.names.length) setClasses(parsed.names);
-                } catch { /* best effort */ }
-              }
-            }}
-          />
+                  await registerDataset({
+                    modelLineId, slug: slugify(name), displayName: name,
+                    manifestKey: datasetKey, bundleKey,
+                    stats: { classes: classes.length },
+                  });
+                  setDatasets((await loadDataAssets(modelLineId, "dataset")).rows);
+                  setUploadNew(false);
+                  push({ tone: "success", title: `Registered ${name}`, detail: "It can now be picked by any future run." });
+                } catch (e) {
+                  push({ tone: "danger", title: "Could not register dataset", detail: (e as Error).message });
+                }
+              }}
+            >
+              Save this upload for reuse
+            </button>
+          )}
+
           <Derived p={schema.params.find((p) => p.key === "classes")!} value={derived.classes} />
         </section>
 
@@ -303,6 +408,27 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
               <p className="muted">Every control, its default and its explanation come from the shared schema.</p>
             </div>
           </header>
+          <div className="pv3-group">Profile</div>
+          <div className="pv3-profiles">
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                className={`chip ${activeProfile?.id === p.id ? "on" : ""}`}
+                title={p.description ?? undefined}
+                onClick={() => applyProfile(p)}
+              >
+                {p.display_name}
+                {p.version > 1 && <span className="pv3-ver"> v{p.version}</span>}
+              </button>
+            ))}
+            <button className="chip ghost" onClick={saveAsProfile}>+ Save current as profile</button>
+            {!assetsReady && (
+              <span className="pv3-hint">
+                Profiles and saved datasets need migration 08 — run <code>supabase db push</code>.
+              </span>
+            )}
+          </div>
+
           <div className="pv3-grid">
             {paramsFor("train", "field").map((p) => (
               <Field key={p.key} p={p} value={values[p.key]} onChange={(v) => set(p.key, v)} />
