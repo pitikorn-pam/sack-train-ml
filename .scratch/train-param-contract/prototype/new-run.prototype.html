@@ -1,0 +1,422 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Three variants of the "New training run" page under the
+  parameter contract decided in .scratch/train-param-contract/issues/06.
+  Switch with ?variant=A|B|C, the floating bar, or the ← → arrow keys.
+
+  Sub-shape B (standalone file) rather than mounting in apps/web, because the real
+  Train page sits behind Supabase magic-link auth and cannot be screenshotted headlessly.
+  The app chrome below is reproduced from the real UI so the variants are judged at
+  realistic density rather than in a vacuum. Tokens copied from apps/web/src/styles/tokens.css.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — New training run</title>
+<style>
+:root{
+  --color-primary:#0080c8; --color-primary-active:#0066a2; --color-primary-soft:#e5f2fa;
+  --color-ink:#0b1220; --color-body-strong:#1f2937; --color-body:#374151;
+  --color-muted:#6b7280; --color-muted-soft:#9ca3af;
+  --color-canvas:#fff; --color-surface-soft:#fafbfc; --color-surface-card:#f5f7fa;
+  --color-surface-card-strong:#eef2f6; --color-surface-dark:#0b1a2c;
+  --color-hairline:#e5e7eb; --color-hairline-soft:#f1f3f5;
+  --color-success:#10b981; --color-success-soft:#d1fae5;
+  --color-warning:#f59e0b; --color-warning-soft:#fef3c7;
+  --color-danger:#ef4444; --color-danger-soft:#fee2e2;
+  --color-info:#3b82f6; --color-info-soft:#dbeafe;
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--font-sans);font-size:14px;background:var(--color-canvas);color:var(--color-body-strong);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;color:var(--color-ink);font-weight:600}
+p{margin:0;color:var(--color-body)}
+
+/* ---------- app chrome (reproduced from the real UI) ---------- */
+.hdr{display:flex;align-items:center;gap:28px;padding:14px 28px;border-bottom:1px solid var(--color-hairline)}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;border-radius:8px;background:var(--color-primary);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px}
+.brand small{display:block;color:var(--color-muted);font-size:10px;letter-spacing:.08em;font-weight:600}
+.brand strong{font-size:15px;color:var(--color-ink)}
+.nav{display:flex;gap:4px;margin-left:8px}
+.nav a{padding:7px 14px;border-radius:8px;color:var(--color-body);text-decoration:none;font-weight:500}
+.nav a.on{background:var(--color-primary-soft);color:var(--color-primary-active);font-weight:600}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.bell{position:relative;color:var(--color-muted);font-size:17px}
+.bell b{position:absolute;top:-7px;right:-9px;background:var(--color-danger);color:#fff;border-radius:999px;font-size:10px;padding:1px 5px;font-weight:700}
+.acct{display:flex;align-items:center;gap:8px;border:1px solid var(--color-hairline);border-radius:8px;padding:6px 10px;font-size:12.5px;font-family:var(--font-mono)}
+.admin{background:var(--color-warning-soft);color:#92400e;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;font-family:var(--font-sans)}
+.signout{border:1px solid var(--color-hairline);background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;color:var(--color-body);cursor:pointer}
+.subnav{display:flex;gap:22px;padding:0 28px;border-bottom:1px solid var(--color-hairline)}
+.subnav span{padding:12px 2px;font-size:13.5px;color:var(--color-muted);border-bottom:2px solid transparent}
+.subnav span.on{color:var(--color-primary-active);border-bottom-color:var(--color-primary);font-weight:600}
+
+/* ---------- shared bits ---------- */
+.wrap{padding:22px 28px 96px}
+.card{border:1px solid var(--color-hairline);border-radius:12px;background:#fff}
+.card-h{padding:14px 18px;border-bottom:1px solid var(--color-hairline-soft)}
+.card-h h2{font-size:15.5px}
+.card-h p{font-size:12.5px;margin-top:3px;color:var(--color-muted)}
+.card-b{padding:16px 18px}
+.grp{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--color-muted-soft);margin:2px 0 12px}
+label.f{display:block;margin-bottom:13px}
+label.f .lab{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--color-body-strong);margin-bottom:5px}
+input.i,select.i{width:100%;border:1px solid var(--color-hairline);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;color:var(--color-ink);background:#fff}
+input.i:focus,select.i:focus{outline:2px solid var(--color-primary-soft);border-color:var(--color-primary)}
+.hint{font-size:11.5px;color:var(--color-muted);margin-top:4px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px}
+.info{width:15px;height:15px;border-radius:999px;border:1px solid var(--color-muted-soft);color:var(--color-muted);display:inline-grid;place-items:center;font-size:10px;font-weight:700;font-style:italic;cursor:help;flex:none}
+
+/* category chips */
+.cat{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-left:auto}
+.cat.derived{background:var(--color-surface-card-strong);color:var(--color-muted)}
+.cat.adv{background:var(--color-info-soft);color:#1e40af}
+.cat.def{background:var(--color-primary-soft);color:var(--color-primary-active)}
+
+.ro{background:var(--color-surface-card);border:1px dashed var(--color-hairline);color:var(--color-muted);cursor:not-allowed;font-family:var(--font-mono);font-size:12.5px}
+.warnrow{display:flex;gap:9px;align-items:flex-start;background:var(--color-warning-soft);border:1px solid #fcd34d;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#92400e;margin-bottom:12px}
+.badrow{display:flex;gap:9px;align-items:flex-start;background:var(--color-danger-soft);border:1px solid #fca5a5;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#991b1b;margin-bottom:12px}
+.okrow{display:flex;gap:9px;align-items:flex-start;background:var(--color-success-soft);border:1px solid #6ee7b7;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#065f46;margin-bottom:12px}
+
+.btn{background:var(--color-primary);color:#fff;border:0;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--color-body);border:1px solid var(--color-hairline)}
+.btn:disabled{background:var(--color-hairline);color:var(--color-muted-soft);cursor:not-allowed}
+
+pre.cfg{font-family:var(--font-mono);font-size:12px;line-height:1.65;background:var(--color-surface-dark);color:#cbd5e1;border-radius:10px;padding:14px 16px;overflow:auto;margin:0}
+pre.cfg .k{color:#7dd3fc}
+pre.cfg .v{color:#fbbf24}
+pre.cfg .d{color:#f472b6}
+pre.cfg .c{color:#64748b;font-style:italic}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11.5px;color:var(--color-muted);margin-top:10px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px}
+
+.tip{position:relative}
+.tipbox{position:absolute;z-index:5;top:22px;left:0;width:290px;background:var(--color-surface-dark);color:#e2e8f0;border-radius:9px;padding:10px 12px;font-size:11.5px;line-height:1.55;box-shadow:0 10px 24px rgba(11,26,44,.25)}
+.tipbox b{color:#7dd3fc;display:block;margin-bottom:3px;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.tipbox em{color:#fbbf24;font-style:normal}
+
+/* ---------- switcher ---------- */
+.sw{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:var(--color-surface-dark);color:#fff;border-radius:999px;padding:5px 6px;box-shadow:0 12px 30px rgba(11,26,44,.35);z-index:50;font-size:13px}
+.sw button{background:transparent;border:0;color:#fff;font-size:16px;cursor:pointer;padding:5px 12px;border-radius:999px}
+.sw button:hover{background:rgba(255,255,255,.12)}
+.sw .lbl{padding:5px 12px;font-weight:600;white-space:nowrap}
+.sw .tagp{background:var(--color-warning);color:#3b2606;border-radius:999px;font-size:10px;font-weight:800;padding:2px 8px;margin-right:4px;letter-spacing:.06em}
+
+/* ---------- variant B ---------- */
+.split{display:grid;grid-template-columns:minmax(0,1fr) 452px;gap:20px;align-items:start}
+.split pre.cfg{font-size:11px;line-height:1.6}
+.emptypane{border:1px solid var(--color-hairline);border-radius:12px;background:var(--color-surface-soft);padding:46px 24px;text-align:center}
+.emptypane h3{font-size:15px;color:var(--color-body-strong)}
+.emptypane p{font-size:12.5px;color:var(--color-muted);margin-top:6px}
+.sticky{position:sticky;top:18px}
+
+/* ---------- variant C ---------- */
+.steps{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--color-hairline);border-radius:12px;overflow:hidden}
+.step{flex:1;padding:13px 16px;border-right:1px solid var(--color-hairline);background:var(--color-surface-soft)}
+.step:last-child{border-right:0}
+.step.on{background:#fff;box-shadow:inset 0 -3px 0 var(--color-primary)}
+.step.done{background:#fff}
+.step .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:999px;background:var(--color-hairline);color:var(--color-muted);font-size:11px;font-weight:700;margin-right:8px}
+.step.on .n{background:var(--color-primary);color:#fff}
+.step.done .n{background:var(--color-success);color:#fff}
+.step .t{font-size:13px;font-weight:600;color:var(--color-body-strong)}
+.step .s{font-size:11.5px;color:var(--color-muted);margin-top:4px;font-family:var(--font-mono)}
+.rail{display:flex;flex-direction:column;gap:10px}
+.railcard{border:1px solid var(--color-hairline);border-radius:10px;padding:11px 13px;background:var(--color-surface-soft)}
+.railcard h4{font-size:12px;color:var(--color-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:2.5px 0}
+.kv span:first-child{color:var(--color-muted)}
+.kv span:last-child{font-family:var(--font-mono);color:var(--color-ink)}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="brand">
+    <div class="logo">iP</div>
+    <div><small>BSCP</small><strong>sack-train-ml</strong></div>
+  </div>
+  <nav class="nav">
+    <a href="#">Overview</a><a href="#" class="on">Train</a><a href="#">Models</a>
+    <a href="#">Storage</a><a href="#">Replay</a>
+  </nav>
+  <div class="hdr-right">
+    <div class="bell">&#128276;<b>24</b></div>
+    <div class="acct">ipassion@ipassion.co.th <span class="admin">★ ADMIN</span></div>
+    <button class="signout">Sign out</button>
+  </div>
+</div>
+<div class="subnav"><span class="on">New run</span><span>Live</span><span>Recent</span></div>
+
+<div class="wrap" id="root"></div>
+
+<div class="sw">
+  <span class="tagp">PROTOTYPE</span>
+  <button onclick="cycle(-1)">&#8592;</button>
+  <span class="lbl" id="swlbl"></span>
+  <button onclick="cycle(1)">&#8594;</button>
+</div>
+
+<script>
+const WEIGHTS = [
+  ['yolo11s.pt',    'YOLO 11s — balanced',   'ok',   'compiles · on-chip NMS'],
+  ['yolo11n.pt',    'YOLO 11n — fastest',    'ok',   'compiles · on-chip NMS'],
+  ['yolo11m.pt',    'YOLO 11m — more capacity','ok', 'compiles · on-chip NMS'],
+  ['yolov8s.pt',    'YOLOv8s',               'fix',  'needs head-index fix (in scope)'],
+  ['yolov9c.pt',    'YOLOv9c',               'fix',  'needs head-index fix (in scope)'],
+  ['yolo11s-seg.pt','YOLO 11s-seg',          'raw',  'compiles · host-side decode'],
+  ['yolo26s.pt',    'YOLO 26s',              'no',   'train only · needs the YOLO26 pipeline'],
+  ['yolo11n-pose.pt','YOLO 11n-pose',        'no',   'train only · keypoints not supported'],
+];
+const MARK = {ok:'✅', fix:'⚠️', raw:'◐', no:'⛔'};
+
+function weightSelect(sel){
+  return `<select class="i">` + WEIGHTS.map(([v,l,s,note])=>
+    `<option ${v===sel?'selected':''}>${MARK[s]}  ${l} — ${note}</option>`).join('') + `</select>`;
+}
+const I = (t)=>`<span class="info" title="${t}">i</span>`;
+
+const EFFECTIVE = `<span class="c"># effective config — what will actually run</span>
+<span class="k">source_weights</span>: <span class="v">yolo11s.pt</span>
+<span class="k">dataset</span>:        <span class="v">sack_dataset_sep/data.yaml</span>
+<span class="k">classes</span>:        <span class="d">[person, sack]</span>   <span class="c">← derived from dataset</span>
+<span class="k">imgsz</span>:          <span class="v">640</span>
+<span class="k">epochs</span>:         <span class="v">250</span>
+<span class="k">batch</span>:          <span class="v">auto</span>
+<span class="k">optimizer</span>:      <span class="d">AdamW</span>          <span class="c">← default, nobody typed this</span>
+<span class="k">lr0</span>:            <span class="v">0.001</span>
+<span class="k">patience</span>:       <span class="v">20</span>
+<span class="k">close_mosaic</span>:   <span class="d">10</span>             <span class="c">← default</span>
+<span class="k">mosaic</span>:         <span class="d">1.0</span>            <span class="c">← default</span>
+<span class="k">fraction</span>:       <span class="v">1.0</span>
+<span class="k">seed</span>:           <span class="d">0</span>              <span class="c">← default</span>
+<span class="k">deterministic</span>:  <span class="d">true</span>           <span class="c">← default</span>
+<span class="k">save_period</span>:    <span class="d">25</span>             <span class="c">← default</span>
+<span class="k">ultralytics</span>:    <span class="d">8.4.138</span>        <span class="c">← pinned</span>`;
+
+const LEGEND = `<div class="legend">
+  <span><i style="background:#fbbf24"></i>you set it</span>
+  <span><i style="background:#f472b6"></i>filled from default</span>
+  <span><i style="background:#64748b"></i>derived / recorded</span>
+</div>`;
+
+/* ============================ VARIANT A ============================ */
+function VariantA(){ return `
+<div class="split" style="grid-template-columns:minmax(0,760px) minmax(0,1fr)">
+  <div class="card">
+    <div class="card-h"><h2>New training run</h2>
+      <p>Everything on one page, grouped. Review the effective config at the bottom before Colab opens.</p></div>
+    <div class="card-b">
+
+      <div class="grp">Model &amp; data</div>
+      <label class="f"><span class="lab">Model line ${I('Which lineage this run belongs to. Versions are promoted within a line.')}</span>
+        <select class="i"><option>BSCP Sack Detector — YOLO 11s → Hailo-8L</option></select></label>
+      <label class="f"><span class="lab">Dataset ${I('The YOLO data.yaml in R2. Classes are read from it — you do not type them.')}</span>
+        <input class="i" value="sack_dataset_sep/data.yaml"></label>
+      <label class="f"><span class="lab">Classes <span class="cat derived">derived</span></span>
+        <input class="i ro" value="person, sack" readonly>
+        <div class="hint">Read from the dataset. Not editable — a mismatch here breaks the compile and the edge decoder.</div></label>
+      <label class="f"><span class="lab">Source weights ${I('Marks show whether this checkpoint can reach a Hailo-8L .hef today.')}</span>
+        ${weightSelect('yolo11s.pt')}</label>
+
+      <div class="grp" style="margin-top:22px">Training</div>
+      <div class="row3">
+        <label class="f"><span class="lab">Epochs ${I('How many passes over the dataset. Primary lever on cost and fit.')}</span><input class="i" value="250"></label>
+        <label class="f"><span class="lab">Image size ${I('Training resolution. The compile inherits this — a compile run cannot use a different one.')}</span><input class="i" value="640"></label>
+        <label class="f"><span class="lab">Batch ${I('auto lets ultralytics size it to available VRAM.')}</span><select class="i"><option>auto</option><option>8</option><option>16</option></select></label>
+      </div>
+      <div class="row3">
+        <label class="f"><span class="lab">Optimizer ${I('auto picks an experimental optimizer once the run is large enough, and discards your lr0. Pinned to AdamW.')}</span>
+          <select class="i"><option>AdamW  (default)</option><option>SGD</option><option>Adam</option><option>auto — not recommended</option></select></label>
+        <label class="f"><span class="lab">Learning rate ${I('Initial LR. ~0.001 suits AdamW fine-tuning from a pretrained checkpoint.')}</span><input class="i" value="0.001"></label>
+        <label class="f"><span class="lab">Patience ${I('Stop after N epochs without improvement. On a small dataset this is what actually ends the run.')}</span><input class="i" value="20"></label>
+      </div>
+      <div class="row3">
+        <label class="f"><span class="lab">Seed ${I('Fixes the random draw. Required by the experiment discipline.')}</span><input class="i" value="0"></label>
+        <label class="f"><span class="lab">Deterministic ${I('A seed alone does not make a run reproducible — this is what does.')}</span><select class="i"><option>true</option><option>false</option></select></label>
+        <label class="f"><span class="lab">Save every ${I('Checkpoint every N epochs. Colab sessions die; this turns a lost session into a resumable one.')}</span><input class="i" value="25"></label>
+      </div>
+
+      <div class="grp" style="margin-top:22px">Compile when done</div>
+      <div class="okrow"><span>☑</span><div>A compile run will be created automatically when this training succeeds — it gets its own config and its own record.</div></div>
+      <div class="row3">
+        <label class="f"><span class="lab">Optimization level ${I('0 = basic quantization. 2 = quantization-aware FINE-TUNING (4 epochs, ≥1024 images) and needs a GPU, or DFC silently drops to 0.')}</span>
+          <select class="i"><option>0 — basic quant (proven)</option><option>2 — finetune (needs ≥1024 calib)</option></select></label>
+        <label class="f"><span class="lab">Calibration set ${I('Named, stored image set. Two compiles are only comparable if they provably used the same images.')}</span>
+          <select class="i"><option>onsite-2026-08-31 (1024)</option><option>train-split (proof-grade)</option></select></label>
+        <label class="f"><span class="lab">Input shape <span class="cat derived">derived</span></span><input class="i ro" value="640 × 640 × 3" readonly></label>
+      </div>
+
+      <details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;color:var(--color-primary-active);font-weight:600">Advanced parameters (JSON, validated before submit)</summary>
+        <div style="margin-top:10px" class="hint">Checked against ultralytics' real argument list — an unknown key is rejected here, not 20 minutes into Colab.</div>
+      </details>
+
+      <div class="grp" style="margin-top:24px">Review — effective config</div>
+      <pre class="cfg">${EFFECTIVE}</pre>
+      ${LEGEND}
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button class="btn">Create run &amp; open Colab</button>
+        <button class="btn ghost">Save as draft</button>
+      </div>
+    </div>
+  </div>
+  <div class="emptypane sticky"><h3>Select a run</h3><p>Click a row on the left to see live metrics + logs.</p></div>
+</div>`; }
+
+/* ============================ VARIANT B ============================ */
+function VariantB(){ return `
+<div class="split">
+  <div class="card">
+    <div class="card-h"><h2>New training run</h2><p>Dense two-column form. The panel on the right is the truth, always visible.</p></div>
+    <div class="card-b">
+      <div class="grp">Model &amp; data</div>
+      <div class="row2">
+        <label class="f"><span class="lab">Model line</span><select class="i"><option>BSCP Sack Detector — YOLO 11s</option></select></label>
+        <label class="f"><span class="lab">Dataset</span><input class="i" value="sack_dataset_sep/data.yaml"></label>
+      </div>
+      <div class="row2">
+        <label class="f"><span class="lab">Classes <span class="cat derived">derived</span></span><input class="i ro" value="person, sack" readonly></label>
+        <label class="f tip"><span class="lab">Source weights ${I('capability marks')}</span>${weightSelect('yolo11s.pt')}</label>
+      </div>
+
+      <div class="grp" style="margin-top:18px">Training</div>
+      <div class="row2">
+        <label class="f"><span class="lab">Epochs</span><input class="i" value="250"></label>
+        <label class="f tip"><span class="lab">Optimizer <span class="cat def">default</span></span>
+          <select class="i"><option>AdamW  (default)</option><option>SGD</option><option>auto — not recommended</option></select>
+          <div class="tipbox"><b>optimizer &nbsp;·&nbsp; default AdamW</b>
+            Chooses the algorithm that updates the weights.
+            <em>Why it is pinned:</em> <code>auto</code> switches to an experimental optimizer once the run passes ~10,000 iterations, and silently discards your learning rate. One release of it crashed at epoch 1.</div></label>
+      </div>
+      <div class="row2">
+        <label class="f"><span class="lab">Image size</span><input class="i" value="640"><div class="hint">The compile run inherits this.</div></label>
+        <label class="f"><span class="lab">Learning rate</span><input class="i" value="0.001"></label>
+      </div>
+      <div class="row2">
+        <label class="f"><span class="lab">Patience</span><input class="i" value="20"></label>
+        <label class="f"><span class="lab">Batch</span><select class="i"><option>auto</option></select></label>
+      </div>
+      <div class="row2">
+        <label class="f"><span class="lab">Seed <span class="cat def">default</span></span><input class="i" value="0"></label>
+        <label class="f"><span class="lab">Save every <span class="cat def">default</span></span><input class="i" value="25"></label>
+      </div>
+      <div class="warnrow"><span>⚠</span><div><b>fraction = 0.10</b> — this run would train on 10% of the dataset. Left over from a smoke test?</div></div>
+
+      <div class="grp" style="margin-top:18px">Compile when done</div>
+      <div class="row2">
+        <label class="f"><span class="lab">Optimization level</span><select class="i"><option>0 — basic quant</option><option>2 — finetune</option></select></label>
+        <label class="f"><span class="lab">Calibration set</span><select class="i"><option>onsite-2026-08-31 (1024)</option></select></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="sticky">
+    <div class="card">
+      <div class="card-h"><h2>Effective config</h2><p>What will actually run, resolved live.</p></div>
+      <div class="card-b" style="padding:14px">
+        <pre class="cfg">${EFFECTIVE}</pre>
+        ${LEGEND}
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="card-b">
+        <div class="badrow"><span>⛔</span><div><b>1 blocking</b> — <code>single_cls: true</code> in advanced would collapse person+sack into one class.</div></div>
+        <div class="warnrow"><span>⚠</span><div><b>1 warning</b> — <code>fraction 0.10</code> trains on a tenth of the data.</div></div>
+        <button class="btn" disabled style="width:100%">Fix 1 blocking issue to continue</button>
+      </div>
+    </div>
+  </div>
+</div>`; }
+
+/* ============================ VARIANT C ============================ */
+function VariantC(){ return `
+<div style="max-width:1040px">
+  <div class="steps">
+    <div class="step done"><div><span class="n">✓</span><span class="t">Model &amp; data</span></div><div class="s">yolo11s.pt · person, sack</div></div>
+    <div class="step on"><div><span class="n">2</span><span class="t">Training</span></div><div class="s">250 epochs · AdamW</div></div>
+    <div class="step"><div><span class="n">3</span><span class="t">Compile</span></div><div class="s">opt 0 · onsite calib</div></div>
+    <div class="step"><div><span class="n">4</span><span class="t">Review &amp; launch</span></div><div class="s">gate before Colab</div></div>
+  </div>
+
+  <div class="split" style="grid-template-columns:minmax(0,1fr) 300px">
+    <div class="card">
+      <div class="card-h"><h2>Step 2 — Training</h2><p>One cluster of decisions at a time. Nothing reaches Colab until step 4 passes.</p></div>
+      <div class="card-b">
+        <div class="row2">
+          <label class="f"><span class="lab">Epochs ${I('Passes over the dataset.')}</span><input class="i" value="250"></label>
+          <label class="f"><span class="lab">Patience ${I('Stop after N epochs without improvement.')}</span><input class="i" value="20"></label>
+        </div>
+        <div class="row2">
+          <label class="f"><span class="lab">Optimizer ${I('Pinned to AdamW; auto is not recommended.')}</span>
+            <select class="i"><option>AdamW  (default)</option><option>SGD</option><option>auto — not recommended</option></select></label>
+          <label class="f"><span class="lab">Learning rate ${I('Initial LR.')}</span><input class="i" value="0.001"></label>
+        </div>
+        <div class="row2">
+          <label class="f"><span class="lab">Image size ${I('The compile inherits this value.')}</span><input class="i" value="640"></label>
+          <label class="f"><span class="lab">Batch ${I('auto sizes to VRAM.')}</span><select class="i"><option>auto</option></select></label>
+        </div>
+        <div class="row3">
+          <label class="f"><span class="lab">Seed ${I('Fixes the random draw.')}</span><input class="i" value="0"></label>
+          <label class="f"><span class="lab">Deterministic ${I('What actually makes a run reproducible.')}</span><select class="i"><option>true</option></select></label>
+          <label class="f"><span class="lab">Save every ${I('Checkpoints, so a dead Colab session can resume.')}</span><input class="i" value="25"></label>
+        </div>
+        <div class="row2">
+          <label class="f"><span class="lab">Freeze layers ${I('Freeze the first N backbone layers — the natural small-dataset lever.')}</span><input class="i" value="none"></label>
+          <label class="f"><span class="lab">Fraction ${I('Train on a subset. A leftover value here silently under-trains.')}</span><input class="i" value="1.0"></label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button class="btn ghost">← Back</button><button class="btn">Continue to compile →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rail">
+      <div class="railcard"><h4>Step 1 · locked in</h4>
+        <div class="kv"><span>weights</span><span>yolo11s.pt ✅</span></div>
+        <div class="kv"><span>dataset</span><span>sack_dataset_sep</span></div>
+        <div class="kv"><span>classes</span><span>person, sack</span></div>
+      </div>
+      <div class="railcard"><h4>Filled by default</h4>
+        <div class="kv"><span>optimizer</span><span>AdamW</span></div>
+        <div class="kv"><span>close_mosaic</span><span>10</span></div>
+        <div class="kv"><span>mosaic</span><span>1.0</span></div>
+        <div class="kv"><span>ultralytics</span><span>8.4.138</span></div>
+      </div>
+      <div class="railcard" style="background:var(--color-primary-soft);border-color:#bae0f2">
+        <h4 style="color:var(--color-primary-active)">Step 4 gate</h4>
+        <p style="font-size:12px;color:var(--color-primary-active)">The full effective config is shown for approval before the notebook opens. Nothing is created until then.</p>
+      </div>
+    </div>
+  </div>
+</div>`; }
+
+const VARIANTS = {
+  A:['Sectioned single column', VariantA],
+  B:['Split — live effective config', VariantB],
+  C:['Stepper with review gate', VariantC],
+};
+const KEYS = Object.keys(VARIANTS);
+function current(){ const v=new URLSearchParams(location.search).get('variant'); return KEYS.includes(v)?v:'A'; }
+function render(){
+  const k=current(); const [name,fn]=VARIANTS[k];
+  document.getElementById('root').innerHTML=fn();
+  document.getElementById('swlbl').textContent=`${k} — ${name}`;
+}
+function cycle(d){
+  const k=current(); const i=(KEYS.indexOf(k)+d+KEYS.length)%KEYS.length;
+  history.replaceState(null,'',`?variant=${KEYS[i]}`); render();
+}
+addEventListener('keydown',e=>{
+  const t=e.target.tagName;
+  if(t==='INPUT'||t==='TEXTAREA'||e.target.isContentEditable) return;
+  if(e.key==='ArrowLeft') cycle(-1);
+  if(e.key==='ArrowRight') cycle(1);
+});
+render();
+</script>
+</body>
+</html>

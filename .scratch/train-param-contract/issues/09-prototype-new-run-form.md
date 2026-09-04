@@ -1,8 +1,25 @@
 # 09 — Prototype the New-run form under the new contract
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 06
+
+## Artifact
+
+Three variants of the New-run page on one route, switchable with `?variant=A|B|C`, the floating bar, or the ← → arrow keys:
+
+- [`prototype/new-run.prototype.html`](../prototype/new-run.prototype.html) — open with `open .scratch/train-param-contract/prototype/new-run.prototype.html`
+- Screenshots: [A](../prototype/variant-A.png) · [B](../prototype/variant-B.png) · [C](../prototype/variant-C.png)
+
+| Variant | Shape | Its bet |
+|---|---|---|
+| **A** — Sectioned single column | one page, grouped, review panel at the bottom | closest to today; the review is a section you scroll to |
+| **B** — Split, live effective config | form left, always-visible effective config + validation right | the truth is never more than a glance away; launch is blocked from the same panel that explains why |
+| **C** — Stepper with review gate | four steps, one decision cluster each, review is step 4 | the gate before Colab is a *place*, not a paragraph |
+
+Built as a standalone file rather than mounted in `apps/web` because the real Train page sits behind Supabase magic-link auth and cannot be screenshotted headlessly; the app chrome is reproduced so the variants are judged at realistic density. Tokens copied from `apps/web/src/styles/tokens.css`.
+
+Notes for whoever reads the screenshots: variant B's tooltip is rendered permanently open to show what the "i" affordance looks like — in use it appears on hover and would not cover the fields beneath it.
 
 <!-- 05 was listed here and has been removed: a prototype settles form and behaviour;
      where the schema definition lives is a build concern that does not change what
