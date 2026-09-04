@@ -24,3 +24,4 @@ manual/
 
 # Local prediction outputs (model weights + render dumps, ~550MB, not source)
 predictions/
+apps/web/tsconfig.tsbuildinfo

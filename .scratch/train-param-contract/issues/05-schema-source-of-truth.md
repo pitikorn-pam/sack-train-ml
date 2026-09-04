@@ -1,7 +1,7 @@
 # 05 — Where does the parameter schema live, and how does it reach both TypeScript and Python?
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 04
 
 ## Question
@@ -17,3 +17,13 @@ The test this decision must pass: adding one new tunable parameter should be a s
 **Sharpened by [06](./06-fields-vs-escape-hatch.md).** Every field must carry a **default** and **help text saying what it does and what it affects** — the owner asked for this explicitly, as the "i" tooltip beside each control. That makes help text part of the schema rather than of the markup, because the same explanation has to be true in the form, in the effective-config preview, and in whatever records the run. The schema must also carry each parameter's **category** (field / advanced / derived / refused), since "derived" and "refused" are behaviours the form has to render, not conventions a developer remembers.
 
 Depends on [04](./04-where-validation-lives.md) — where validation is enforced determines which runtimes need the schema.
+
+## Answer
+
+*(Taken on the recommendations, under a directive to keep moving; reversible if the owner disagrees.)*
+
+**One JSON file in the repo, read directly by all three runtimes.** The browser and the `start-training` edge function are both TypeScript, so the real split is TS ↔ Python, and both read JSON natively. Every alternative — define-in-TS-generate-Python, define-in-Python-generate-TS, a published package — adds a generation step that can be forgotten, to solve a problem plain JSON does not have.
+
+**A test keeps it honest against ultralytics.** Every key in the schema must exist in `DEFAULT_CFG_DICT`, and every default we claim must match what the pinned ultralytics actually uses. Research [01](./01-ultralytics-train-args.md) established this check is cheap, and it is the only thing that keeps the schema true months from now. It depends on [10](./10-toolchain-pinning.md), because the test can only answer "matches which version?" once a version is pinned.
+
+**Each parameter carries:** `default`, accepted `range`/`enum`, **`category`** (field / advanced / derived / refused), **`help`** (what it does *and* what it affects), `form` (train or compile), and `applies_to` (family/task). `category` and `help` belong in the schema rather than the markup because the same explanation must be true in the form, in the pre-launch preview, and in the run's record — three places that drift apart within a month if the text lives in React.

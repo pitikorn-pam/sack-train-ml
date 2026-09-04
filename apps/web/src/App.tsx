@@ -38,9 +38,14 @@ function AppInner() {
     return meta.role === "admin";
   }, [session]);
 
-  if (session === "loading") return <div className="app-shell"><p>Loading…</p></div>;
+  // Dev-only UI preview: `?preview=1` renders the app shell without a session so a
+  // form can be looked at (or screenshotted) without a magic-link round trip.
+  // import.meta.env.DEV is false in a production build, so this cannot ship.
+  const preview = import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
 
-  if (session === null) {
+  if (!preview && session === "loading") return <div className="app-shell"><p>Loading…</p></div>;
+
+  if (!preview && session === null) {
     return (
       <div className="app-shell">
         <header className="hero">
@@ -52,7 +57,7 @@ function AppInner() {
     );
   }
 
-  const email = session.user.email ?? "(unknown)";
+  const email = session !== "loading" && session !== null ? (session.user.email ?? "(unknown)") : "preview@local";
 
   return (
     <div className="app-shell">

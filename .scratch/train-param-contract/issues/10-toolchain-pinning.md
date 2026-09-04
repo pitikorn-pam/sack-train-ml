@@ -1,7 +1,7 @@
 # 10 — What pins the toolchain a run is built with?
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -18,3 +18,15 @@ Decide:
 4. **What happens when the installed version disagrees with the pin** — refuse to train, warn, or proceed and record it.
 
 The bar this must meet: *when* a run is launched must not change *what* it does.
+
+## Answer
+
+*(Taken on the recommendations, under a directive to keep moving; reversible if the owner disagrees.)*
+
+**Pin exactly, in one place, and record what actually ran.** `ultralytics==8.4.138` (the release that fixed the Muon crash) pinned in `pyproject.toml`, with the notebook installing from the repo rather than resolving `ultralytics` afresh — the unpinned `%pip install` is what let a five-hour-old broken release into a run.
+
+**The pin is repo-level; the record is run-level.** A run does not choose its toolchain, but it must state the one it got: the installed version goes into the effective-config artifact ([07](./07-provenance-effective-config.md)). That answers "what changed between these two runs?" without needing the pin to be part of the config.
+
+**On disagreement, refuse before training.** If the installed version differs from the pin, the run fails immediately with the mismatch named, rather than training for an hour on an untested version — and per [04](./04-where-validation-lives.md) it records what it found, so the next run's preflight warns first.
+
+**Bumping is a deliberate act:** change the pin, run the schema-conformance test from [05](./05-schema-source-of-truth.md), and the diff in argument defaults surfaces there rather than in a training run. The DFC pin for the compile side follows the same rule but is tracked separately, since Hailo pairs DFC 3.30.0 with the HailoRT 4.20.0 on the device while this repo currently uses 3.33.1.
