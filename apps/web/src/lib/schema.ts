@@ -7,7 +7,7 @@
  * authority and the only place that can guarantee nothing invalid reaches the
  * database (issue 04).
  */
-import raw from "./paramSchema.json";
+import raw from "@contracts/param-schema.json";
 
 export type Category = "field" | "advanced" | "derived" | "refused";
 export type Level = "ok" | "warn" | "blocked";
