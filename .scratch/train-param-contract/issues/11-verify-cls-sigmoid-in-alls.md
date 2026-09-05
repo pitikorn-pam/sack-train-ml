@@ -10,7 +10,13 @@ Raised by [02](./02-hailo-compile-params.md). Hailo's official `yolov11s.alls` c
 
 This is a **fact to establish, not a decision to make**, and it needs a DFC environment (Colab), so it is a task rather than a research ticket.
 
-**Checklist.** Needs Colab: the DFC wheel is `linux_x86_64` and cannot run on an arm64 Mac. No device required, and no re-compile — it reads a `.har` a previous compile already wrote.
+**Now a ready-to-run notebook**, because no DFC environment was standing and the earlier snippet assumed one: [`notebooks/probe_cls_activation.ipynb`](../../../notebooks/probe_cls_activation.ipynb) builds the venv from the wheel in Drive, clones the repo and runs [`scripts/probe_cls_activation.py`](../../../scripts/probe_cls_activation.py).
+
+The probe **imports the real recipe** from `compile_clientrunner.py` rather than restating it, so the answer describes the pipeline that actually runs rather than a copy that has drifted — the failure mode `compile_run.ipynb` already demonstrated.
+
+It reads the output layers twice: after parse, and after `optimize()` — the stage where `change_output_activation` takes effect, which a parsed-only HAR would not reveal. Needs no device, no full compile and no calibration set; quantization quality is irrelevant to a question about the graph, so eight synthetic frames suffice. A second, independent reading comes from `hailo har extract --auto-model-script-path`, which recovers the model script DFC generated for itself.
+
+**Original checklist** (kept for the record — needs Colab, since the DFC wheel is `linux_x86_64` and cannot run on an arm64 Mac):
 
 ```python
 %%writefile /content/check_sigmoid.py
