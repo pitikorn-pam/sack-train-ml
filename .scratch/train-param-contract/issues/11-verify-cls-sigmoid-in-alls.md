@@ -1,7 +1,7 @@
 # 11 — Does DFC auto-insert the cls sigmoid, or must our ALLS emit it?
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -63,3 +63,41 @@ Record the output verbatim in the answer — paraphrasing this one defeats its p
 **What the answer changes:** if DFC does *not* auto-insert it, the ALLS generator must emit those lines and [06](./06-fields-vs-escape-hatch.md) must treat output activation as part of the generated-parameter surface rather than something the compiler handles. If it does auto-insert, the hypothesis is closed and the collapse investigation keeps pointing at `optimization_level`.
 
 Record the verbatim command output in the answer — this is exactly the kind of claim that must not be paraphrased.
+
+## Answer
+
+**DFC inserts the sigmoid itself. Our ALLS does not need `change_output_activation`, and the hypothesis is closed.**
+
+Run on Colab (Tesla T4, DFC 3.33.1, Python 3.10) against **`f8f85a5d`** — the deployed production detector, not a stand-in. Verbatim, from applying the model script the pipeline actually generates:
+
+```
+--- output layers after parse (before any model script) ---
+  probe/conv80                                   cls  channels=2    activation=None
+
+--- model script applied (identical to the pipeline's) ---
+model_optimization_flavor(optimization_level=0, compression_level=0)
+normalization1 = normalization([0.0,0.0,0.0],[255.0,255.0,255.0])
+nms_postprocess("/content/probe/nms_config.json", meta_arch=yolov8, engine=cpu)
+
+[info] The activation function of layer probe/conv54 was replaced by a Sigmoid
+[info] The activation function of layer probe/conv65 was replaced by a Sigmoid
+[info] The activation function of layer probe/conv80 was replaced by a Sigmoid
+```
+
+The sequence is decisive: after parsing, the classification convs carry **no** activation; after `nms_postprocess(meta_arch=yolov8)` is applied, DFC replaces the activation on **all three** cls convs — one per stride — of its own accord. Nothing in our ALLS asks for it.
+
+**What this rules out.** Every HEF this repo has produced has been feeding *probabilities*, not raw logits, into `nms_scores_th`. That was the worst available explanation for the INT8 collapse — it would have implicated every artifact ever built here — and it is now eliminated by direct observation rather than by argument.
+
+**Where that leaves the collapse.** Back on `optimization_level`, which [02](./02-hailo-compile-params.md) ranked first: level 2 is quantization-aware fine-tuning, it wants a GPU, and a diverging QFT matches the 2026-07-21 dead-HEF incident exactly. The contract already defaults `optimization_level` to 0 and refuses level 2 with fewer than 1024 calibration images, so the decisions taken before this evidence arrived hold up.
+
+### A second finding, unplanned
+
+The first attempt used **synthetic** calibration frames and DFC refused to quantize:
+
+```
+NegativeSlopeExponentNonFixable: Quantization failed in layer probe/conv80 due to unsupported
+required slope. Desired shift is 8.0, but op has only 8 data bits. ... Mostly happens when using
+random calibration-set/weights, the calibration-set is not normalized properly ...
+```
+
+Re-running with 16 **real** frames cleared it. That is direct evidence for something the contract had only asserted: the calibration set is not a formality, and a poor one can fail the compile outright rather than merely degrade it. It strengthens [08](./08-compile-notebook-and-recompile-flow.md)'s decision to make calibration sets named, hashed artifacts rather than whatever directory happened to be at hand.
