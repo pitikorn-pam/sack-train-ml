@@ -76,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
     config, run_row = client.load_run_config(run_id)
     model_line_id = run_row["model_line_id"]
     client.mark_running(run_id)
+
+    try:
+        toolchain = check_toolchain(REPO_ROOT)
+    except Exception as exc:
+        # Record what the environment actually held, so the next run can be warned
+        # before it launches rather than discovering this after Colab boots.
+        client.log_step(run_id, 1, "init", "error", f"toolchain check failed: {exc}")
+        client.finalize_run(run_id, status="failed")
+        raise
     client.log_step(run_id, 1, "init", "info",
                     f"train_for_run starting · git={git_sha or 'unknown'} dry_run={args.dry_run}")
 
@@ -212,6 +221,42 @@ def main(argv: list[str] | None = None) -> int:
 # ----------------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------------
+
+def _pinned_ultralytics(root: Path) -> str | None:
+    """The exact version pyproject pins, or None if it is not pinned exactly."""
+    import re
+    try:
+        text = (root / "pyproject.toml").read_text()
+    except OSError:
+        return None
+    m = re.search(r'"ultralytics==([^"]+)"', text)
+    return m.group(1) if m else None
+
+
+def check_toolchain(root: Path) -> dict[str, str]:
+    """Refuse before training if the installed ultralytics is not the pinned one.
+
+    The Muon crash was not an optimizer problem — it was an unpinned install picking
+    up a release that had been broken for five hours. Training for an hour on an
+    untested version is the expensive way to find that out (issue 10).
+
+    Returns the environment facts either way, so a failure teaches the next run's
+    preflight instead of only costing this one (issue 04).
+    """
+    import ultralytics
+
+    installed = getattr(ultralytics, "__version__", "unknown")
+    pinned = _pinned_ultralytics(root)
+    facts = {"ultralytics_installed": installed, "ultralytics_pinned": pinned or "unpinned"}
+    if pinned and installed != pinned:
+        raise RuntimeError(
+            f"toolchain mismatch: ultralytics {installed} installed, {pinned} pinned. "
+            f"Refusing to train on an untested version — reinstall with "
+            f"`pip install -e .` from the repo, or change the pin deliberately."
+        )
+    print(f"[toolchain] ultralytics {installed} (pinned {pinned or 'unpinned'})")
+    return facts
+
 
 def _current_git_sha(root: Path) -> str | None:
     try:

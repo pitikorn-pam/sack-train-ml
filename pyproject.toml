@@ -9,7 +9,11 @@ description = "BSCP sack detector training pipeline — YOLO 11s → ONNX → Ha
 requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
-    "ultralytics>=8.3.0",
+    # Pinned exactly, not floated. A run launched on 2026-09-02 picked up 8.4.137 —
+    # a release five hours old whose auto-selected Muon optimizer crashed at epoch 1,
+    # fixed the next day in 8.4.138. When a run is launched must not change what it does.
+    # Bumping is deliberate: change this, then run the schema conformance test.
+    "ultralytics==8.4.138",
     "onnx>=1.16.0",
     "onnxsim>=0.4.36",
     "numpy>=1.26",

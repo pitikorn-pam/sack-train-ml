@@ -26,6 +26,7 @@ import argparse
 import glob
 import json
 import os
+import re
 
 import numpy as np
 from PIL import Image
@@ -52,6 +53,18 @@ def load_calib(d, n, size):
     return a
 
 
+def _head_index(conv_names: set[str], prefix: str) -> int:
+    """Which ``model.N`` holds the detection head.
+
+    Taken from the graph rather than assumed: the head is the highest ``model.N``
+    that owns a ``cv2.*`` branch, which is the box branch every detect head has.
+    Falls back to 23 only if nothing matches, so the failure stays recognisable.
+    """
+    pat = re.compile(rf"^/model\.(\d+)/{re.escape(prefix)}cv2\.\d+/")
+    hits = {int(m.group(1)) for c in conv_names if (m := pat.match(c))}
+    return max(hits) if hits else 23
+
+
 def detect_head(onnx_path, verify_end_nodes=True):
     """Auto-detect (family, task, nms_mode, end_nodes) from the ONNX graph.
 
@@ -75,6 +88,13 @@ def detect_head(onnx_path, verify_end_nodes=True):
     conv_names = {n.name for n in model.graph.node if n.op_type == "Conv"}
 
     # family: YOLO26 renames the detect head convs with a ``one2one_`` prefix.
+    #
+    # NOTE this is a *head-style* discriminator, not a version detector. Anything with
+    # a classical DFL box head — YOLOv8, YOLOv9, YOLO11, YOLO12 — reports "yolov11",
+    # because what the compile actually needs to know is whether the on-chip
+    # meta_arch=yolov8 decoder can read the box branch. That decision is right for all
+    # of them; the *label* is wrong for v8/v9/v12 and will misreport in meta.yaml.
+    # Verified 2026-09-06: yolov8n and yolov9t both parse and take the on-chip path.
     family = "yolo26" if any("one2one_cv2" in c for c in conv_names) else "yolov11"
     prefix = "one2one_" if family == "yolo26" else ""
 
@@ -86,14 +106,21 @@ def detect_head(onnx_path, verify_end_nodes=True):
     # nms: on-chip yolov8 NMS only decodes the YOLOv11 DFL box; everything else raw.
     nms_mode = "onchip" if (family == "yolov11" and task == "detection") else "raw"
 
+    # The head is NOT always at model.23. Measured across ten exported architectures:
+    # YOLOv8 and YOLOv9t-c put it at model.22, YOLOv9e at model.42, YOLO12 at model.21.
+    # Hardcoding 23 is what limited this pipeline to five of forty-six trainable
+    # checkpoints, so derive the index from the graph instead — a re-export cannot
+    # break it, and neither can a new architecture that follows the same naming.
+    head = _head_index(conv_names, prefix)
+
     end_nodes = []
     for s in (0, 1, 2):
-        end_nodes.append(f"/model.23/{prefix}cv2.{s}/{prefix}cv2.{s}.2/Conv")
-        end_nodes.append(f"/model.23/{prefix}cv3.{s}/{prefix}cv3.{s}.2/Conv")
+        end_nodes.append(f"/model.{head}/{prefix}cv2.{s}/{prefix}cv2.{s}.2/Conv")
+        end_nodes.append(f"/model.{head}/{prefix}cv3.{s}/{prefix}cv3.{s}.2/Conv")
     if task == "segmentation":
         for s in (0, 1, 2):
-            end_nodes.append(f"/model.23/{prefix}cv4.{s}/{prefix}cv4.{s}.2/Conv")
-        end_nodes.append("/model.23/proto/cv3/conv/Conv")
+            end_nodes.append(f"/model.{head}/{prefix}cv4.{s}/{prefix}cv4.{s}.2/Conv")
+        end_nodes.append(f"/model.{head}/proto/cv3/conv/Conv")
 
     # Skip the existence check when the caller will supply --end-nodes explicitly
     # (an override exists precisely for the rename case that would fail this check).
