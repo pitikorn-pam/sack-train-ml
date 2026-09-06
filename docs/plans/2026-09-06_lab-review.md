@@ -31,13 +31,27 @@ Being fair first, because the instinct with a review is to rewrite what is fine.
 |---|---|---|
 | Where it runs | Supabase + R2 + Colab | FastAPI on a Mac, `:8077` |
 | What a "run" is | `runs` row, `run_id` uuid | a lab RunManifest (`lib/labApi.ts`) |
-| Where models come from | `versions` table | `/api/lab/models` (`labApi.ts:456`) |
+| Where models come from | `versions` table | either — `registry`, `local` or `legacy` mode |
 | Can it compare two? | **No** — nothing in `sections/` or `components/` compares runs | **Yes** — `compareRunManifests`, `baselineRunId` (`sections/Lab.tsx:158`) |
+| Does a result flow back? | — | **No** |
 
-The half that trains models cannot compare them. The half that can compare them does not
-know the registry exists. `Lab.tsx` is 74KB — four times `Models.tsx` — because the real
-work is happening there, in a parallel universe keyed by its own identifiers, backed by a
-server that only runs on one laptop.
+*Corrected after reading `Lab.tsx` properly:* an earlier draft of this review said the Lab
+does not know the registry exists. That was wrong. It has a `registry` model mode that
+lists `versions`, fetches the signed R2 artifact and replays with it (`Lab.tsx:572`).
+
+The bridge is **half-built, in the inbound direction only.** A model flows from the
+registry into the Lab; nothing flows back. The Lab computes exactly the numbers the
+registry has nowhere to store, and then drops them.
+
+Two further facts that sharpen this:
+
+- **Registry mode fetches `artifacts.pytorch`** — the `.pt`. The device runs the `.hef`.
+  So the Lab measures a different artifact than the one deployed, which is precisely the
+  artifact-identity gap described below, showing up in the tool meant to close it.
+- `Lab.tsx` is 74KB — four times `Models.tsx` — because the real work happens there. It
+  already has durable tasks with names and descriptions, run history, a baseline selector,
+  line and zone drawing, and capability negotiation with its backend. It is closer to
+  being the evaluation surface than anything else in the product.
 
 Everything below follows from this.
 
