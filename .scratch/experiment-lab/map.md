@@ -81,6 +81,29 @@ Not tickets — the decisions that fixed this map's scope before it had one.
   sizing, radii, animation, and the patterns for error / modal / popup / alert, plus how
   components and modules are built and integrated.
 
+### Execution override (2026-09-07, owner directive)
+
+This map **carries execution**, overriding wayfinder's plan-don't-do default. The owner's
+words: *"ไล่ทำตามแผนและ spec / ticket ของเราให้หมด พร้อม unittest ต่างๆ, recheck uxui"* and the goal
+*"Finish Enhancement sack-train-ml and finish all testcase, and Done goal when v1.0.0 done
+(all function can working fine)"*, with subagents dispatched to do the work and a long
+autonomous run authorised.
+
+What that changes:
+
+- **Decision tickets still resolve as decisions**, and they are taken on the recommendations
+  under a directive to keep moving — the same footing as issue 05 of the parameter-contract
+  map. Every one is **reversible**: the answer records what was chosen and what the
+  alternative was, so the owner can overturn it without re-deriving it.
+- **A subagent never answers a HITL question on the owner's behalf.** Subagents do research,
+  implementation, and testing. The decisions are taken by the session the owner delegated
+  to, and written into the ticket as such.
+- **Work lands on `feat/experiment-lab`** in a worktree at
+  `.claude/worktrees/experiment-lab`, never on the owner's `main` checkout.
+- **The green baseline is the floor.** At the start of the run: `pytest tests/` 49 passed,
+  `node contracts/verify-contract.mjs` all passing, `apps/web` build clean. Nothing lands
+  that breaks any of the three, and every new behaviour arrives with a test.
+
 **Standing preferences.**
 - Plan, don't do — every ticket resolves a *decision*.
 - Evidence before claims. Name the `file:line` or command output behind any assertion; mark
