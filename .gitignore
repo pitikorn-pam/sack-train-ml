@@ -25,3 +25,6 @@ manual/
 # Local prediction outputs (model weights + render dumps, ~550MB, not source)
 predictions/
 apps/web/tsconfig.tsbuildinfo
+
+# Stray 737MB of loom-oracle experiment data — belongs in the loom-oracle vault, not here.
+/loom-oracle/
