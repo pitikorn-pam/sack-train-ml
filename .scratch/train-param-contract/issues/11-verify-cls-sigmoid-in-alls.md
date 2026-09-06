@@ -86,6 +86,29 @@ nms_postprocess("/content/probe/nms_config.json", meta_arch=yolov8, engine=cpu)
 
 The sequence is decisive: after parsing, the classification convs carry **no** activation; after `nms_postprocess(meta_arch=yolov8)` is applied, DFC replaces the activation on **all three** cls convs — one per stride — of its own accord. Nothing in our ALLS asks for it.
 
+### The artifact, obtained after the fact
+
+The three log lines above are DFC narrating itself. The decisive evidence is inside the saved HAR, in `probe.modifications_meta_data.json`:
+
+```json
+"outputs": { "probe/postprocess_output_layer": [{
+  "cmd_type": "nms_postprocess", "meta_arch": "yolov8", "engine": "cpu",
+  "hn_output_layers": ["probe/conv51","probe/conv54","probe/conv62",
+                       "probe/conv65","probe/conv77","probe/conv80"],
+  "sigmoid_layers":   ["probe/conv54","probe/conv65","probe/conv80"]
+}]}
+```
+
+Those three are exactly the `cls_layer` of each stride's bbox decoder, per `probe.nms.json` in the same archive. **DFC records the sigmoid as part of the `nms_postprocess` modification** — it never emits a `change_output_activation` line, which is why the effective `probe.alls` contains only what we supplied.
+
+*Open, and not resolved here:* Hailo's own `yolov11s.alls` does carry explicit `change_output_activation` lines. If `nms_postprocess` already applies them, why theirs does too is unexplained — possibly a different flow, possibly redundancy. Not needed for this decision, but not understood either.
+
+### How this was verified, and how it was almost got wrong
+
+The first reading was published from the log lines alone, before any artifact was opened — the claim-before-verify shape this repo keeps recording. The answer happened to survive, but the confidence at the time was not earned.
+
+Worse, the probe's own verdict then said the **opposite**: `NO output layer carries a sigmoid after optimize`. That was a bug in the check, not a contradiction in the evidence — `nms_postprocess` collapses the six head outputs into one NMS output, so the cls convs stop being output layers and their `activation` field stays `None` whether or not the sigmoid was applied. Reading that field was the wrong test. The script now reads `sigmoid_layers` from the HAR's modification record and cross-checks it against the decoders' `cls_layer` list, which is the thing that actually carries the answer.
+
 **What this rules out.** Every HEF this repo has produced has been feeding *probabilities*, not raw logits, into `nms_scores_th`. That was the worst available explanation for the INT8 collapse — it would have implicated every artifact ever built here — and it is now eliminated by direct observation rather than by argument.
 
 **Where that leaves the collapse.** Back on `optimization_level`, which [02](./02-hailo-compile-params.md) ranked first: level 2 is quantization-aware fine-tuning, it wants a GPU, and a diverging QFT matches the 2026-07-21 dead-HEF incident exactly. The contract already defaults `optimization_level` to 0 and refuses level 2 with fewer than 1024 calibration images, so the decisions taken before this evidence arrived hold up.

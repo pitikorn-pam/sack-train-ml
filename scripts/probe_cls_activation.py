@@ -131,24 +131,44 @@ def main() -> int:
     print(f"  hailo har extract {har} --auto-model-script-path {a.work}/effective.alls")
 
     # ---- verdict ----
-    cls_layers = {n: act for n, act in after.items() if "cv3" in n or "cv4" in n}
-    if not cls_layers:  # fall back to channel count if the naming differs
-        cls_layers = {n: act for n, act in after.items() if n in before}
-    sigmoids = [n for n, act in after.items() if "sigmoid" in act.lower()]
+    # Read the HAR's own modification record, NOT the layers' `activation` field.
+    # nms_postprocess collapses the six head outputs into a single NMS output, so the
+    # cls convs stop being output layers and their `activation` stays None even when
+    # the sigmoid is applied — the earlier version of this check read that field and
+    # drew the opposite conclusion from the truth.
+    import tarfile
+    sigmoid_layers: list[str] = []
+    with tarfile.open(har) as t:
+        member = next((n for n in t.getnames() if n.endswith("modifications_meta_data.json")), None)
+        if member:
+            mods = json.loads(t.extractfile(member).read())
+            for entries in (mods.get("outputs") or {}).values():
+                for e in entries:
+                    sigmoid_layers += e.get("sigmoid_layers", [])
+
+    cls_layers = [d["cls_layer"] for d in bbox_decoders]
+    covered = [c for c in cls_layers if c in sigmoid_layers]
+
+    print("\n=== evidence from the HAR's own modification record ===")
+    print(f"  cls layers (from bbox_decoders): {cls_layers}")
+    print(f"  sigmoid_layers recorded by DFC : {sigmoid_layers}")
 
     print("\n================ VERDICT ================")
-    if sigmoids:
-        print(f"DFC DID apply a sigmoid to {len(sigmoids)} output layer(s):")
-        for n in sigmoids:
-            print(f"  {n}")
-        print("→ our ALLS does not need change_output_activation. Hypothesis closed;")
-        print("  the INT8 investigation stays on optimization_level.")
+    if covered and len(covered) == len(cls_layers):
+        print("DFC applies a sigmoid to every classification head by itself,")
+        print("as part of nms_postprocess — it is recorded in the HAR, not emitted as an ALLS line.")
+        print("\n-> our generated ALLS does NOT need change_output_activation, and no HEF")
+        print("   built here has fed raw logits into a probability threshold.")
+    elif covered:
+        print(f"PARTIAL: only {len(covered)} of {len(cls_layers)} classification heads got a sigmoid:")
+        print(f"  covered: {covered}")
+        print("-> investigate before trusting any HEF from this recipe.")
     else:
-        print("NO output layer carries a sigmoid after optimize.")
-        print("→ our generated ALLS MUST emit change_output_activation(<cls_conv>, sigmoid),")
-        print("  and every HEF built by this repo so far has been feeding raw logits into a")
-        print("  threshold that expects probabilities.")
+        print("NO classification head has a sigmoid recorded.")
+        print("-> our ALLS MUST emit change_output_activation(<cls_conv>, sigmoid), and every")
+        print("   HEF built here has compared raw logits against a probability threshold.")
     print("=========================================")
+
     print("\nPaste this whole output back — the raw lines above are the evidence, not this summary.")
     return 0
 
