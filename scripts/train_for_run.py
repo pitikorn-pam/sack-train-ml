@@ -136,6 +136,16 @@ def main(argv: list[str] | None = None) -> int:
         uploads["pytorch"] = u_pt.to_record()
         u_onnx = client.upload_artifact(onnx_path, kind="onnx", run_id=run_id, semver=semver)
         uploads["onnx"] = u_onnx.to_record()
+
+        # Provenance layer 3 — the only layer that can name values nobody chose.
+        try:
+            eff_path = _write_effective_config(save_dir, config, model, toolchain, git_sha)
+            u_eff = client.upload_artifact(eff_path, kind="effective_config",
+                                           run_id=run_id, semver=semver)
+            uploads["effective_config"] = u_eff.to_record()
+        except Exception as exc:  # noqa: BLE001 — provenance must never fail a good run
+            client.log_step(run_id, 6, "upload", "warning",
+                            f"effective config not recorded: {exc}")
         client.log_step(run_id, 6, "upload", "ok",
                         f"Uploaded {best_pt.name} + {onnx_path.name}")
 
@@ -221,6 +231,62 @@ def main(argv: list[str] | None = None) -> int:
 # ----------------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------------
+
+def _write_effective_config(
+    save_dir: Path, config: Any, model: Any, toolchain: dict[str, str], git_sha: str | None,
+) -> Path:
+    """Record the third and final layer of provenance (issue 07).
+
+    The edge function stores what was requested and what our defaults resolved it to.
+    Neither can name the ~100 keys ultralytics fills in on its own — and that is exactly
+    the class the Muon crash belonged to: `optimizer` was never requested by anyone, it
+    arrived from ultralytics' own "auto". Only the run itself can see them, so only the
+    run can record them.
+
+    Written as an artifact beside the weights so it travels with the model rather than
+    living solely in a database nobody may open later.
+    """
+    import platform
+
+    effective: dict[str, Any] = {}
+    try:
+        args = getattr(getattr(model, "trainer", None), "args", None)
+        if args is not None:
+            effective = {k: _jsonable(v) for k, v in vars(args).items()}
+    except Exception as exc:  # never let bookkeeping kill a finished run
+        effective = {"_error": f"could not read trainer args: {exc}"}
+
+    record = {
+        "layer": "final-effective",
+        "note": "every argument as the trainer actually held it, ultralytics' own defaults included",
+        "requested": {
+            "hyperparameters": dict(getattr(config, "hyperparameters", {}) or {}),
+            "classes": list(getattr(config, "classes", []) or []),
+            "source_weights": getattr(config, "source_weights", None),
+        },
+        "effective": effective,
+        "environment": {
+            **toolchain,
+            "git_sha": git_sha,
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+        },
+    }
+    out = Path(save_dir) / "effective-config.json"
+    out.write_text(json.dumps(record, indent=2, sort_keys=True))
+    print(f"[provenance] effective config -> {out}")
+    return out
+
+
+def _jsonable(v: Any) -> Any:
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): _jsonable(x) for k, x in v.items()}
+    return str(v)
+
 
 def _pinned_ultralytics(root: Path) -> str | None:
     """The exact version pyproject pins, or None if it is not pinned exactly."""

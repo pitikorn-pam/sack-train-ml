@@ -1,7 +1,7 @@
 // =============================================================================
 // upload-artifact — Issue a presigned R2 PUT URL for a training artifact
 // =============================================================================
-// POST body: { kind: "pytorch"|"onnx"|"hef"|"hef_meta",
+// POST body: { kind: "pytorch"|"onnx"|"hef"|"hef_meta"|"effective_config",
 //              run_id: string,
 //              semver: string,
 //              content_type?: string }

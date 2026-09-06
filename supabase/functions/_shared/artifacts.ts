@@ -16,13 +16,18 @@
 // Adding a new kind = just write the row with that key; no code change needed.
 // =============================================================================
 
-export type ArtifactKind = "pytorch" | "onnx" | "hef" | "hef_meta";
+// effective_config carries the third layer of provenance: every argument as the
+// trainer actually held it, ultralytics' own defaults included. It is the only layer
+// that can name a value nobody chose — the class the Muon crash belonged to — so it
+// travels with the model rather than living only in the database.
+export type ArtifactKind = "pytorch" | "onnx" | "hef" | "hef_meta" | "effective_config";
 
 export const ARTIFACT_EXTENSIONS: Record<ArtifactKind, string> = {
   pytorch: "pt",
   onnx: "onnx",
   hef: "hef",
   hef_meta: "hef.meta.yaml",
+  effective_config: "effective-config.json",
 };
 
 export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
@@ -30,6 +35,7 @@ export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
   onnx: "application/octet-stream",
   hef: "application/octet-stream",
   hef_meta: "application/x-yaml",
+  effective_config: "application/json",
 };
 
 export type ArtifactDetail = {
