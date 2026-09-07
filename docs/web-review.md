@@ -21,11 +21,13 @@ Stated first, because the instinct with a review is to rewrite what is fine.
 - **Promotion is modelled properly.** `versions` → `channels` → `channel_deployments`
   with history, and Deploy / Set default / Undeploy in `sections/Models.tsx`. Most teams
   reach production without this and regret it.
-- **The Lab is unusually honest about its own limits.** It renders LOCKED panels carrying
+- **Replay is unusually honest about its own limits.** It renders LOCKED panels carrying
   a reason the backend supplied rather than inventing numbers
-  (`sections/Lab.tsx:577,586,587,588,593`), and `apps/api/lab_server.py:746` labels its
+  (`sections/Replay.tsx:1984,2015,2235,2394`), and `apps/api/lab_server.py:769` labels its
   run history `"persistent": False` out loud. That instinct is rarer than it should be
-  and every new surface should inherit it.
+  and every new surface should inherit it. The rebuild kept it and went further: each
+  locked panel now carries a badge naming what is missing — `2 RUNS REQUIRED`,
+  `EVENTS REQUIRED`, `SELECT A ROW` — so the reason is legible before the panel is read.
 - **The parameter contract is real, not aspirational.** One JSON file at
   `contracts/param-schema.json` genuinely *imported* by the browser
   (`lib/schema.ts`), the edge function (`_shared/contract.ts`) and the Python pipeline
@@ -43,7 +45,7 @@ Stated first, because the instinct with a review is to rewrite what is fine.
 | Does a result flow back? | — | **no** |
 
 A model flows *from* the registry *into* the Lab — it has a `registry` model mode that
-lists versions and fetches the signed R2 artifact (`Lab.tsx:572`). Nothing flows back.
+lists versions and fetches the signed R2 artifact (`Replay.tsx:836`). Nothing flows back.
 The Lab computes exactly the numbers the registry has nowhere to store, and drops them.
 
 `run_metrics` is `(run_id, step, name, value)` with that as its primary key, so it holds
@@ -99,7 +101,7 @@ an em dash, because an em dash reads as zero or as loading.
 
 ## 5. One tab is doing two unrelated jobs
 
-`Lab.tsx` is 596 lines because it is both an *interactive instrument* for one clip — draw
+The old `Lab.tsx` was 649 lines because it was both an *interactive instrument* for one clip — draw
 the line, drag a knob, watch the overlay — and a *results surface*: run history, baseline
 vs current, event diff, count summary.
 
@@ -109,13 +111,22 @@ results half was never persisted.
 
 **Decided:** split into **Replay** (the instrument) and **Suites** (the results surface).
 
-## 6. `Lab.tsx` is not reviewable as written
+**Half done.**
+`Replay` shipped at `sections/Replay.tsx`, routed at `/replay` with `/lab` redirecting so older links survive.
+`Suites` does not exist yet, and until it does the results half still lives beside the instrument — the split is a rename plus a route, not yet a separation of concerns.
 
-Several of its lines are 3–8 kB each. That is why a defect as simple as reading
+## 6. ~~`Lab.tsx` is not reviewable as written~~ — fixed by the rebuild
+
+Several of its lines were 3–8 kB each. That is why a defect as simple as reading
 `result.diagnostics` when the backend sends `detection_diagnostics` survived long enough
 to render "DETECTOR DIAGNOSTICS LOCKED" on every successful run, with tests passing the
 whole time. Formatting is not cosmetic at this size; it is the difference between a diff
 someone can read and one they scroll past.
+
+The rebuild closed this, and the numbers are the point rather than the line count.
+`Lab.tsx` held 648 lines whose longest was 5,813 characters, with 34 lines over 200.
+`Replay.tsx` holds 2,624 lines whose longest is 305, with 3 over 200 and a median of 38 — four times the lines and roughly a twentieth of the worst line.
+A file that got *longer* is the correct outcome here: the old number was small because the content was folded, not because there was less of it.
 
 ---
 
@@ -128,7 +139,17 @@ Each is a re-skin item rather than a defect, carried from the design audit:
 - two pill variants exist that the status system forbids;
 - the `pv3` form leaks off every scale in the system;
 - the provenance legend's three colours are undocumented and arbitrary;
-- `--lab-magenta` and `--lab-yellow` are declared once and used nowhere.
+- ~~`--lab-magenta` and `--lab-yellow` are declared once and used nowhere~~ — gone with the
+  rest of the private Lab palette in the rebuild;
+- the dataset uploader's label column is a fixed `flex: 0 0 100px`, so "Image bundle
+  (.zip) (opt)" wraps onto three lines (`styles.css:1118`). Not fixed here because the
+  width is a real choice about how much of the row the label deserves, and both rows must
+  keep sharing it. The mid-word break in the same label **was** a bug and is fixed —
+  `word-break: break-all` was written for the R2 key and reached the `(opt)` marker
+  through descendant selection, rendering it "(o pt)"; the rule is now direct-child only;
+- the Runs table wraps "RUN ID" and "GIT SHA" onto two lines each, which makes the header
+  row taller than its content needs (`sections/Train.tsx`). Same class of choice as above:
+  column widths, not a defect.
 
 ## Deliberately NOT recommended
 

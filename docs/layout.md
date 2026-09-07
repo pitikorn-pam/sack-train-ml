@@ -65,6 +65,22 @@ it elsewhere can set `LAB_TASKS_DB` today.
   from the toolchain pin in `contract.dfc_wheel_key()`) and the `note` config field (which
   is why the Runs list's Note column could never populate — see `docs/web-review.md`).
 
+- `apps/web/src/sections/Lab.tsx` and `apps/web/src/sections/Lab.defaults.test.ts` —
+  superseded by `Replay.tsx` and `Replay.test.tsx`.
+  The rebuild carried the engine over verbatim, so nothing imported the old file
+  afterwards; leaving it would have meant two surfaces claiming to be the Lab.
+  `Replay.test.tsx` is a strict superset of the old test — it keeps the per-key
+  `DEFAULT_CFG` pin against `webui/lab_core.py`, the "tracker the backend cannot run"
+  guard, and all four `matchDistancePx` cases, then adds about thirty-five more.
+  `tests/test_events_csv.py` parses that component's source and was repointed with it.
+
+- The 284 lines of Lab-only CSS in `apps/web/src/styles.css` — the twelve private
+  `--lab-*` tokens, the dark `.lab-shell` and its `margin:-16px`, and 154 `.lab-*` rules.
+  Verified dead by class name before removal, not by assumption: the only surviving
+  `lab-*` strings in the front end are three download **filenames** in `Replay.tsx`
+  (`lab-config.json`, `lab-events.csv`, `lab-run-<id>.manifest.json`), which are not
+  selectors. `.pv3-*` and `.gate-unknown` were explicitly preserved.
+
 ## What is deliberately NOT reorganised
 
 - **`apps/web/src/` internals.** `sections/` / `components/` / `lib/` / `styles/` is a

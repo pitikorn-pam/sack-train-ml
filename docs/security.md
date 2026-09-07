@@ -64,4 +64,5 @@ session before considering it done.
 
 `supabase/functions/_shared/cors.ts` and `apps/api/lab_server.py`. For the Lab this is
 defensible — it binds `127.0.0.1` and is a local research tool — but it is stated here as
-a boundary rather than left implicit, because `Lab.tsx` instructs the operator to start it.
+a boundary rather than left implicit, because `Replay.tsx:1135` instructs the operator to
+start it.

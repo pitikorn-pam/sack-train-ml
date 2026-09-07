@@ -8,8 +8,8 @@ Three columns were structurally always empty and one of them, `path_corridor_dis
 was emitted in the row while the backend never produced it. Removing them from the
 header without the row would have produced exactly the silent shift above.
 
-This parses the source, because both lists live inline in a 600-line component and
-neither is exported. It is deliberately narrow: it counts, it does not interpret.
+This parses the source, because both lists live inline in the component and neither is
+exported. It is deliberately narrow: it counts, it does not interpret.
 
     pytest tests/test_events_csv.py
 """
@@ -20,12 +20,17 @@ from pathlib import Path
 
 import pytest
 
-LAB_TSX = Path(__file__).resolve().parents[1] / "apps" / "web" / "src" / "sections" / "Lab.tsx"
+# Was sections/Lab.tsx until the surface was rebuilt on the design system; the export
+# lists moved with it. The path is asserted rather than assumed, because a rename that
+# silently stopped this file from finding its source would turn three real checks into
+# three passes on an empty string.
+REPLAY_TSX = Path(__file__).resolve().parents[1] / "apps" / "web" / "src" / "sections" / "Replay.tsx"
 
 
 @pytest.fixture(scope="module")
 def source() -> str:
-    return LAB_TSX.read_text()
+    assert REPLAY_TSX.exists(), f"the Replay source moved again: {REPLAY_TSX}"
+    return REPLAY_TSX.read_text()
 
 
 def _header(source: str) -> list[str]:

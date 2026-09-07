@@ -57,7 +57,7 @@ def test_ground_truth_is_optional_and_defaults_match_deployed_edge():
     assert config.match_thresh == 0.70
     # inflip swaps "in" for "out" in the count, and the web form shipped the opposite
     # default while a button labelled "Reset deployed defaults" restored it. Pinned on
-    # both sides now; apps/web/src/sections/Lab.defaults.test.ts holds the other end.
+    # both sides now; apps/web/src/sections/Replay.test.tsx holds the other end.
     assert config.inflip is True
     # The form offered only "ByteTrack" while this is what actually runs.
     assert config.tracker_type == "centroid"
