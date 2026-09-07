@@ -144,11 +144,13 @@ answer:**
    the Lab needs too. Carry `line_counter.py` whole — see
    [05](./05-where-the-shared-engine-lives.md).
 
-2. **What are the deployed knob values, read from a running container?** Every number in the
-   inventory's knob table is a Mac checkout. The repo's own rule is that the container is the
-   authority, and this project has already been burned by trusting a checkout instead. Whatever
-   the package ships as "the deployed default" is unverified until read via `docker inspect` /
-   `docker exec`.
+2. ~~**What are the deployed knob values, read from a running container?**~~ **Resolved
+   2026-09-07.** Read from edge003 via `docker inspect` / `docker exec`. `match_thresh` is
+   an **IoU threshold** in the deployed file's own words; the Lab's numeric defaults match
+   the device exactly, so the lift migrates semantics rather than values; `scorer.passthrough`
+   is `false` on the live machine, confirming cv-replay is not deploy-truth; and no counting
+   knob is set in the environment at all. Full table in
+   [05](./05-where-the-shared-engine-lives.md).
 
-Neither is large. Both are on the critical path, and both are exactly the kind of thing that is
-cheap now and expensive after the package is cut.
+**Both are now closed**, and they were exactly the kind of thing that is cheap before the
+package is cut and expensive after. Step 2 is unblocked.

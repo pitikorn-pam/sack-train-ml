@@ -273,3 +273,56 @@ Lab needs too, where "published" becomes "written to `evaluations`".
 **Blocker 2 remains open**: the deployed knob values still have not been read from a
 running container, and the repo's own rule is that the container — not a checkout — is
 the authority on what is deployed.
+
+## Blocker 2 resolved (2026-09-07): the deployed knobs, read from a running container
+
+Read from **edge003**, the fleet's DEV device, via `docker inspect` and `docker exec` on
+the `sack-detector` container (up 4 days, healthy) — not from a checkout, which the
+repo's own `verify-deployed-config-from-device` rule says is not evidence.
+
+`/app/config/tuning.yaml` in the container, dated 2026-09-02:
+
+| Knob | Deployed | Unit / semantics, per the file's own comment |
+|---|---|---|
+| `tracker.track_thresh` | `0.3` | confidence fraction — seeds/sustains a track |
+| `tracker.track_buffer` | `30` | frames a lost track is retained |
+| **`tracker.match_thresh`** | **`0.7`** | **IoU threshold for association** — stated outright |
+| `counting.roi_dedup_distance_px` | `25` | pixels |
+| `counting.roi_dedup_frames` | `120` | frames the spatial dedup stays active |
+| `counting.count_cooldown` | `40` | frames between a count and an opposite re-count |
+| `counting.conf_threshold` | `0.60` | confirmed/flagged split |
+| `counting.stale_id_frames` | `300` | frames — **declared, never loaded** |
+| `scorer.passthrough` | **`false`** | the scorer actively gates confirm/flag/drop |
+| `predictor.mode` / `history_n` | `quadratic` / `6` | **declared, never consumed** |
+| `heal.enabled` | `true` | occlusion re-link healer wired in |
+| identity firewall / birth-crossing | `true` / `true` | both live |
+
+### Four things this settles
+
+1. **`match_thresh` is an IoU threshold on the device, in writing.** The shared config
+   schema must carry that meaning, which is what this ticket already required — it is now
+   evidenced rather than asserted. The Lab folding it into a pixel distance is a
+   divergence from the deployed semantics, not a difference of opinion.
+
+2. **The Lab's numbers were right; only their meanings diverged.** `LabConfig`'s
+   defaults — conf_split 0.60, roi_dedup_px 25, roi_dedup_frames 120, cooldown 40,
+   track_buffer 30, match_thresh 0.70 — match the deployed values **exactly**. That is
+   worth knowing before the lift: the migration is of semantics, not of values.
+
+3. **`scorer.passthrough: false` on the live device**, confirming that `cv-replay`'s
+   hand-rolled passthrough is not deploy-truth. Previously inferred from the repo file;
+   now read from the machine.
+
+4. **Three dead knobs confirmed on the running system, not just in the checkout.** The
+   container's environment holds `TRACKER_TYPE=botsort`, and
+   `docker inspect --format '{{json .Config.Cmd}}'` returns
+   `["python","-u","run.py","--stream","--weather","owa","--save","--resolution","1280x720","--classes","0,1"]`
+   — **no `--tracker-mode`**, so argparse's default selects `ByteTrackWrapper` and the env
+   var is inert on the deployed device. `stale_id_frames` and the `predictor` pair are
+   declared in the deployed file and consumed by nothing.
+
+**No counting knob is set in the environment at all** — every one comes from
+`tuning.yaml`. The inventory claimed this and the verification pass disputed its
+completeness; read from the container, the claim holds.
+
+**Both blockers on cutting the counting package are now closed.**
