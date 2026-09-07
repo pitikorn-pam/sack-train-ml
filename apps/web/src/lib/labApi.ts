@@ -206,7 +206,7 @@ export type RunManifest = {
   output?: { video_id?: string; video_url?: string };
 };
 
-export type RunMetricKey = "confirmed" | "flagged" | "recovered" | "excluded" | "total";
+export type RunMetricKey = "confirmed" | "flagged" | "dropped" | "recovered" | "excluded" | "total";
 export type RunMetricDelta = { key: RunMetricKey; baseline: number; current: number; delta: number };
 export type EventRecordChange = {
   eventId: string;
@@ -290,7 +290,10 @@ export function compareRunManifests(baseline: RunManifest, current: RunManifest)
     .filter((key) => jsonValue(baselineConfig[key]) !== jsonValue(currentConfig[key])).sort();
   const baselineSummary = baseline.counts?.summary;
   const currentSummary = current.counts?.summary;
-  const metricDeltas = (Object.keys({ confirmed: 1, flagged: 1, recovered: 1, excluded: 1, total: 1 }) as RunMetricKey[])
+  // `dropped` belongs here for the same reason it belongs in the summary display: it
+  // is counted into `total`, so leaving it out means a change that moves crossings
+  // between dropped and confirmed shows up in `total` with no line explaining it.
+  const metricDeltas = (Object.keys({ confirmed: 1, flagged: 1, dropped: 1, recovered: 1, excluded: 1, total: 1 }) as RunMetricKey[])
     .map((key) => [key, numericMetric(baselineSummary, key), numericMetric(currentSummary, key)] as const)
     .filter((entry): entry is readonly [RunMetricKey, number, number] => entry[1] !== null && entry[2] !== null)
     .map(([key, baselineValue, currentValue]) => ({ key, baseline: baselineValue, current: currentValue, delta: currentValue - baselineValue }));
