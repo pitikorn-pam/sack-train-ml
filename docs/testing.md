@@ -152,3 +152,27 @@ Both Deno suites import `jsr:@std/assert@1.0.14`, pinned. The older
 `testing/asserts.ts` instead — so a test written against it fails at module resolution
 before a single assertion runs. If a new test file cannot resolve its imports, copy them
 from `_shared/compat_test.ts` rather than guessing a version.
+
+
+## 6. Conformance against the PINNED ultralytics
+
+```bash
+./scripts/verify_against_pin.sh
+```
+
+Expected: `schema conforms to ultralytics 8.4.138 — the version the contract pins`,
+then `21 passed`.
+
+**Why this is separate from suite 1.** `tests/test_contract.py` compares the schema
+against the ultralytics that happens to be *installed*, and deliberately downgrades a
+version mismatch to a warning rather than a failure — honestly, because a green tick
+must not imply more than it earned. The consequence is that conformance can be proven
+against a version nobody ships, and the pin exists precisely because the Muon defect
+lived in exactly one upstream release.
+
+This script builds a throwaway virtualenv, installs the pinned version into it, and runs
+the checks there. Nothing outside `$VENV_DIR` is touched, so it can be run on a machine
+whose working environment holds a different version — which is the normal case, and was
+the case here: the repo's `.venv` runs 8.4.56.
+
+To make your own environment match the pin: `pip install -e .`
