@@ -28,3 +28,7 @@ apps/web/tsconfig.tsbuildinfo
 
 # Stray 737MB of loom-oracle experiment data — belongs in the loom-oracle vault, not here.
 /loom-oracle/
+
+# Git worktrees live here. `git worktree list` already tracks them; committing the
+# directory would nest a checkout inside the repository.
+.claude/worktrees/
