@@ -234,3 +234,42 @@ deliberately downgrades that to a warning and says why, honestly — a green tic
 imply more than it earned. The consequence stands regardless: `check_against_ultralytics()`
 today proves the schema matches **8.4.56**, and the pin exists precisely because the Muon
 defect lived in exactly one upstream release. v1.0.0 must require the pinned version present.
+
+---
+
+## Blocker 1 resolved (2026-09-07): the flagged ledger lifts
+
+The verification pass left this open and on the critical path — `RegionManager`'s flagged
+ledger (`line_counter.py:748-993`, ~245 of the file's 1,020 lines) looked like
+MQTT/journal-shaped device bookkeeping because of its vocabulary: `flag_event`,
+`flagged_id`, `session_id`, approve / reject / reserve / commit / rollback.
+
+**It is not. It lifts with the rest of the core.** Verified directly:
+
+- **The whole file imports nothing device-specific**: `logging`, `math`, `time`,
+  `collections`, `dataclasses`, `datetime`, `typing`, `cv2`, `numpy`, plus
+  `src.config.settings` — the injection point already identified — and
+  `src.counting.roi_config` and `src.detector.detection_split`, both of which are
+  already inside the lifted core.
+- **Lines 748-993 touch nothing at all beyond that.** A scan for `settings.`, `os.`,
+  `environ`, `getenv`, `socket`, `sqlite`, `mqtt`, `publish`, `requests` and `json.`
+  across that range returns only docstrings.
+- **The store is a plain in-memory dict**: `self._flagged_items: Dict[str, Dict[str, Any]]`
+  (`line_counter.py:481`). There is no journal, no queue, no client.
+- **`session_id` is a parameter, supplied by the caller.** The only caller is the glue
+  layer, `detection_loop.py:1494`. The ledger never obtains one for itself.
+
+So what it holds is *review state* — a crossing that a human must confirm, and where in
+that state machine it currently sits. That is domain logic, and the Lab needs exactly the
+same concept the moment an evaluation can produce a flagged crossing. The names sound
+like transport because the transport is what consumes them; the module is transport-free.
+
+**Consequence for the lift plan:** carry `line_counter.py` whole, as
+[01](./01-lift-the-edge-counting-stack.md) proposed. The publish-before-commit protocol
+(`reserve_next_approved_flagged` → `commit_finalized_flagged` →
+`rollback_flagged_finalization`) travels with it and is worth having: it is the shape a
+Lab needs too, where "published" becomes "written to `evaluations`".
+
+**Blocker 2 remains open**: the deployed knob values still have not been read from a
+running container, and the repo's own rule is that the container — not a checkout — is
+the authority on what is deployed.
