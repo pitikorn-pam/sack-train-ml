@@ -115,7 +115,26 @@ What that changes:
 
 <!-- one line per resolved ticket: gist + link -->
 
-_(none yet — this map was charted 2026-09-07 and hand-resolves nothing.)_
+- [What is one `evaluations` row?](./issues/02-what-is-one-evaluation.md) — one append-only table
+  keyed on *(artifact bytes) × (clip, over a stated frame range) × (resolved config)*. The model is
+  identified by `artifact_sha256`, not by a pointer that can be repointed; `artifact_kind` and
+  `engine_version` are columns from day one so a `.pt` number and a `.hef` number can never be
+  compared unlabelled, and a count that moved because the engine moved is distinguishable from one
+  that moved because the model did. Four flat numeric columns (`counted`, `expected`, and the
+  nullable `missed`/`false_positive`) plus `metrics jsonb`. Re-running writes a new row rather than
+  replacing — the only way non-determinism ever becomes visible. The provenance gate is a CHECK
+  constraint, not a convention: `reportable` defaults false and cannot be true without a known
+  source kind, a measured fps and a machine-produced count.
+- [What is a scenario clip, and where does its ground truth come from?](./issues/03-what-is-a-scenario-clip.md) —
+  clips get their own table (not a `data_assets` row), with scenario labels as a controlled
+  vocabulary in a table so "how does this model do on occlusion clips" is answerable. Ground truth
+  splits by who can establish it: a **total count** may be typed in the Lab by a person who watched
+  the clip, **per-crossing** truth comes only from the existing `cv-review` → `golden_test_set`
+  route, and a count-only clip is first-class. A human typing *ground truth* is not a provenance
+  violation — the gate is about the measured count, never about the truth it is measured against.
+  `fps` and `frame_count` must come from a real `ffprobe -count_packets`, enforced by a constraint
+  requiring the stored probe to contain `nb_read_packets`, because `duration × r_frame_rate` has
+  already cost this project a wrong count. Trims point back at their source clip.
 
 ## Not yet specified
 
