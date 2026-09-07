@@ -6,8 +6,8 @@ BSCP sack detector training pipeline — YOLO 11s → ONNX → Hailo HEF, orches
 
 | Layer | Status |
 |-------|--------|
-| Supabase schema | ✅ 7 migrations applied to cloud |
-| Edge functions  | ✅ 10 functions deployed |
+| Supabase schema | 11 migrations in the repo; 01–09 applied to cloud, 10 (evaluations + clips) and 11 (experiments) written and not yet applied |
+| Edge functions  | 13 in the repo; the two evaluation-queue functions are new and not yet deployed |
 | Python pipeline | ✅ `src/sack_train_ml/` + `scripts/train_for_run.py` |
 | Colab notebook  | ✅ `notebooks/train_run.ipynb` |
 | Web dashboard   | ✅ minimal (auth + runs list + new-run form + realtime metrics) |
@@ -73,7 +73,7 @@ npm install && npm run dev   # → http://localhost:5173
 ```
 
 Inside the dashboard:
-1. Sign in with magic link.
+1. Sign in with a username and password (a bare username is suffixed `@ipassion.co.th`).
 2. **New run** → fill config JSON (dataset R2 key + classes + hyperparams) → submit.
 3. Browser opens Colab with `?run_id=<uuid>` appended.
 4. In Colab: Runtime → Run all. Paste service-role + callback secret when prompted.
@@ -91,29 +91,44 @@ sack-train-ml/
 │   ├── training.py            YOLO orchestration + metric callback
 │   ├── evaluation.py          metric normalize + gate verdict
 │   ├── export_onnx.py         model.export(format="onnx") wrapper
-│   ├── hailo_pipeline.py      compile_hef via hailomz CLI
+│   ├── hailo_pipeline.py      compile_hef via the DFC ClientRunner in a subprocess venv
 │   └── release.py             bundle assembly + manifest
 │
 ├── scripts/
-│   └── train_for_run.py       main entrypoint (Colab calls this)
+│   ├── train_for_run.py       main entrypoint (Colab calls this)
+│   ├── compile_clientrunner.py  the real DFC compile recipe
+│   └── probe_cls_activation.py  answers "does DFC insert the cls sigmoid"
+
+├── contracts/
+│   ├── param-schema.json      ONE schema: read by the web form, the edge function
+│   │                          and the Python pipeline. Not copied — imported.
+│   └── verify-contract.mjs    the server-side validator's own test
 │
 ├── supabase/
 │   ├── config.toml            project_id = "bscp-model-registry"
-│   ├── migrations/            7 SQL files (model_lines through realtime)
-│   └── functions/             10 edge functions + _shared/ (6 helpers)
+│   ├── migrations/            11 SQL files (model_lines through experiments)
+│   └── functions/             13 edge functions + _shared/ (8 helpers)
 │
 ├── notebooks/
 │   └── train_run.ipynb        Colab orchestrator
 │
 ├── apps/web/                  Vite + React 19 dashboard
 │   └── src/
-│       ├── lib/supabase.ts
-│       ├── components/        Auth, RunsList, RunDetail, NewRun
+│       ├── lib/               supabase, schema, labApi, prefill, writes, profiles
+│       ├── components/        Auth, RunsList, RunDetail, NewRunV3, ColabSteps
+│       ├── sections/          Overview, Train, Models, Storage, Lab
 │       └── App.tsx
 │
+├── apps/api/lab_server.py     the Lab's FastAPI backend (127.0.0.1:8077)
+├── webui/                     lab_core.py + lab_path.py — the Lab's counting engine
+│                              NOTE: a greedy centroid tracker, NOT the device's
+│                              ByteTrack. The two count differently; see
+│                              .scratch/experiment-lab/.
+│
 ├── configs/                   *.example.yaml (dataset, train, hailo, release)
-├── docs/                      architecture.md, pipeline.md, roadmap.md
-├── tests/                     pytest skeleton
+├── docs/                      architecture.md, pipeline.md, roadmap.md, testing.md
+├── DESIGN.md                  the design system every screen follows
+├── tests/                     pytest — 88 passing
 └── openspec/                  spec-driven dev scaffold (Phase 2)
 ```
 

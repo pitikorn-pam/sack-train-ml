@@ -304,6 +304,13 @@ def derive_crossing_event(previous_side, current_side, inflip, frame_index, time
             "tracker": "centroid", "conf_split": float(conf_split),
             "decision": {
                 "raw_conf": float(detection["confidence"]),
+                # False by construction, not by measurement: a crossing suppressed by
+                # dedup or cooldown never becomes an event, so an event that exists
+                # necessarily passed both. They are kept for schema stability and are
+                # deliberately NOT rendered as findings — "dedup hit: no" on every row
+                # reads as evidence dedup never fired, and it is evidence of nothing.
+                # Making suppression visible means emitting a suppressed record, which
+                # is a change to the event contract, not a field fix.
                 "dedup_hit": False, "cooldown_hit": False,
                 "exclusion_hit": exclusion_zone is not None,
                 "recovered": False,

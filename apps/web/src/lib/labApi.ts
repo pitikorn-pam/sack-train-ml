@@ -330,6 +330,10 @@ export type LabConfig = {
   /** Allowed absolute error from GT, expressed as a percentage. */
   tolerance_pct?: number;
   /** Sent only when the backend advertises trail/path support. */
+  /** Declared, sent, and consumed by nothing: the backend advertises tracker,
+   *  healer, scorer and optical_flow — never trail — and never returns trails.
+   *  The Lab panel is honestly LOCKED; these two remain only so a saved config
+   *  from before that was understood still parses. */
   show_trail?: boolean;
   trail_len?: number;
   // Experimental fields are retained in the config contract but are not wired by v0 backend.
