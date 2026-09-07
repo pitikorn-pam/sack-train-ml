@@ -1,0 +1,918 @@
+/* =============================================================================
+ * replay.css — the Replay instrument, on the system's own tokens.
+ * =============================================================================
+ * Replaces the twelve private `--lab-*` tokens and the `margin:-16px` viewport
+ * repaint that sections/Lab.tsx carried (styles.css:1077). Rules here:
+ *
+ *   - no hex literal anywhere; every colour is a token from styles/tokens.css
+ *   - no negative margin, no viewport repaint: the section is ordinary content
+ *     inside `.section-main`
+ *   - the only dark surfaces are the two video wells (`video-surface`), which is
+ *     the one place DESIGN.md:931 says dark belongs
+ *   - no font-size below --fs-caption-upper (11px), anywhere
+ *   - spacing uses only --space-xxs / --space-xs / --space-sm inside the surface
+ *
+ * The density the review grants (13px base, 32px controls) lives in
+ * `panel-dense`, `control-dense` and `data-table` below. The colour language is
+ * the app's. Components named after DESIGN.md sections are first implementations
+ * of documented system components, not Replay-private inventions.
+ * ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+ * Type faces DESIGN.md documents that styles.css had not yet implemented
+ * -------------------------------------------------------------------------- */
+.micro-uppercase {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption-upper);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.code-inline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  font-weight: var(--fw-medium);
+}
+.metric-numeral-sm {
+  font-family: var(--font-mono);
+  font-size: var(--fs-metric-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  letter-spacing: -0.2px;
+  color: var(--color-ink);
+}
+
+/* -----------------------------------------------------------------------------
+ * Refusal & locked states (DESIGN.md:812-826)
+ * -------------------------------------------------------------------------- */
+.refusal-banner,
+.warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body-sm);
+  line-height: 1.45;
+}
+.refusal-banner {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-left: 3px solid var(--color-danger);
+}
+.warning-banner {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border-left: 3px solid var(--color-warning);
+}
+.refusal-banner code,
+.warning-banner code {
+  color: inherit;
+  font-size: var(--fs-code-inline);
+}
+.refusal-banner .button,
+.warning-banner .button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* A locked panel is an empty state with a cause (DESIGN.md:822). Muted, not
+   amber: locked is not a warning. */
+.locked-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-md);
+  background: var(--color-surface-soft);
+  border: 1px dashed var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+.locked-panel p {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  line-height: 1.45;
+  color: var(--color-body);
+}
+.locked-panel-compact { padding: var(--space-xs); }
+
+/* -----------------------------------------------------------------------------
+ * Provenance (DESIGN.md:828-855)
+ * -------------------------------------------------------------------------- */
+.provenance-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-xs);
+  background: var(--color-surface-card);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.provenance-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+}
+.provenance-rows .pk { color: var(--color-muted); }
+.provenance-rows .pv {
+  color: var(--color-body-strong);
+  overflow-wrap: anywhere;
+}
+.provenance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+}
+.provenance-list-scroll {
+  max-height: 180px;
+  overflow: auto;
+}
+
+/* Deliberately quiet: it is present on every number, so it cannot be loud on
+   any of them (DESIGN.md:851). */
+.provenance-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xxs) 6px;
+  margin-top: var(--space-xxs);
+  padding-top: var(--space-xxs);
+  border-top: 1px solid var(--color-hairline-soft);
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+/* Truncates from the left, so the distinguishing tail survives (DESIGN.md:846). */
+.provenance-clip {
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  unicode-bidi: plaintext;
+  color: var(--color-body);
+}
+.provenance-strip .pill { margin-left: auto; }
+
+/* kpi-card + provenance-strip. A bare kpi-card is not permitted on this
+   surface (DESIGN.md:853): the strip is inside the block carrying the numbers,
+   under the numerals, visible without a click. */
+.kpi-card-sourced {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-sm);
+  background: var(--color-canvas);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-hairline);
+  min-width: 0;
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.kpi-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.kpi-cell .kpi-label { margin-top: 0; }
+.kpi-cell-wide { grid-column: 1 / -1; }
+
+/* -----------------------------------------------------------------------------
+ * Panels — the density the review grants: 12px padding, caption eyebrow
+ * -------------------------------------------------------------------------- */
+.panel-dense {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  background: var(--color-canvas);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-hairline);
+  min-width: 0;
+}
+.panel-dense-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+.panel-dense-head h3 {
+  margin: 0;
+  font-size: var(--fs-title-sm);
+}
+
+/* -----------------------------------------------------------------------------
+ * Replay shell + the three columns
+ * -------------------------------------------------------------------------- */
+.replay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: var(--fs-body-sm);
+}
+.replay .eyebrow { margin: 0; }
+.replay-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--color-hairline);
+}
+.replay-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.2px;
+}
+.replay-head-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  flex-wrap: wrap;
+}
+.replay-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 22fr) minmax(420px, 52fr) minmax(260px, 26fr);
+  gap: var(--space-sm);
+  align-items: start;
+}
+.replay-rail,
+.replay-center,
+.replay-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * A4 · rail-section — a numbered native <details> disclosure
+ * -------------------------------------------------------------------------- */
+.rail-section {
+  padding: 0;
+  background: var(--color-canvas);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-hairline);
+}
+.rail-section > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-ink);
+  border-radius: var(--radius-lg);
+}
+.rail-section > summary:hover { background: var(--color-surface-soft); }
+.rail-section[open] > summary {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--color-hairline-soft);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.rail-section .chip { margin: 0; }
+.rail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  min-width: 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * A2 · control-dense — 32px, already {component.button-icon}.size
+ * -------------------------------------------------------------------------- */
+.control-dense,
+.replay .rail-body input[type="number"],
+.replay .rail-body input[type="text"],
+.replay .rail-body input[type="file"],
+.replay .rail-body select,
+.replay .panel-dense select,
+.replay .panel-dense input[type="text"],
+.replay-head-controls select {
+  height: 32px;
+  padding: var(--space-xxs) var(--space-xs);
+  font-size: var(--fs-body-sm);
+  border-radius: var(--radius-md);
+}
+.replay .rail-body textarea,
+.replay .panel-dense textarea {
+  min-height: 56px;
+  padding: var(--space-xxs) var(--space-xs);
+  font-size: var(--fs-body-sm);
+}
+.replay .button-dense {
+  height: 32px;
+  padding: var(--space-xxs) var(--space-xs);
+  font-size: var(--fs-body-sm);
+}
+/* button-primary-blocked (DESIGN.md:824): a blocked submit is hairline + muted,
+   not a 50%-opacity ghost. Opacity is not this system's hierarchy device. */
+.replay .button.primary:disabled {
+  background: var(--color-hairline);
+  color: var(--color-muted);
+  box-shadow: none;
+  opacity: 1;
+}
+.replay input[type="range"] { accent-color: var(--color-primary); }
+.replay input[type="checkbox"] { accent-color: var(--color-primary); }
+
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+.range-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+.range-field input[type="range"] { grid-column: 1 / -1; }
+.check-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xxs);
+  font-size: var(--fs-label);
+}
+.check-row input { height: auto; }
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xxs);
+}
+.hint-text {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+.optional-tag {
+  font-style: normal;
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+.file-row .file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+.file-drop {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  background: var(--color-surface-soft);
+  border: 1px dashed var(--color-hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-body-strong);
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.file-drop:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.file-drop > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.file-drop small {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-normal);
+  color: var(--color-muted);
+}
+.file-drop input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.sub-tabs-dense {
+  margin-bottom: 0;
+  gap: 0;
+}
+.sub-tabs-dense button {
+  padding: var(--space-xs) 10px;
+  font-size: var(--fs-body-sm);
+}
+.zone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  padding-top: var(--space-xxs);
+  border-top: 1px solid var(--color-hairline-soft);
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface-card);
+  color: var(--color-danger);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.icon-button:hover { background: var(--color-surface-card-strong); }
+
+/* -----------------------------------------------------------------------------
+ * A5/A6 · Video surface, HUD and overlay legend (DESIGN.md:927-943)
+ * -------------------------------------------------------------------------- */
+.video-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-muted);
+}
+.video-surface {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface-dark);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.video-surface video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.video-surface canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.video-surface canvas.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.video-surface-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  text-align: center;
+  color: var(--color-on-dark-soft);
+  font-size: var(--fs-body-sm);
+}
+.video-surface-empty strong {
+  color: var(--color-on-dark);
+  font-size: var(--fs-title-sm);
+}
+.overlay-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xxs) var(--space-sm);
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+.overlay-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-xxs);
+  border-radius: var(--radius-xs);
+  vertical-align: middle;
+}
+.overlay-swatch-line { background: var(--color-overlay-line); }
+.overlay-swatch-zone { background: var(--color-overlay-zone); }
+.overlay-swatch-draft { background: var(--color-overlay-draft); }
+
+.tool-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-xs);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.tool-card small {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-normal);
+  color: var(--color-muted);
+}
+.tool-card:hover:not(:disabled) { border-color: var(--color-primary); }
+.tool-card.selected {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  box-shadow: var(--elev-raise-sm);
+}
+.tool-card:disabled {
+  color: var(--color-muted-soft);
+  cursor: not-allowed;
+}
+.tool-card:disabled small { color: var(--color-muted-soft); }
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-hairline);
+}
+.run-hint {
+  flex: 1 1 200px;
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+
+/* -----------------------------------------------------------------------------
+ * Long-running jobs (DESIGN.md:951-963)
+ * -------------------------------------------------------------------------- */
+.job-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-sm);
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-hairline);
+}
+.job-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+.job-progress-head strong {
+  font-size: var(--fs-title-sm);
+  color: var(--color-ink);
+}
+.job-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-muted);
+}
+/* A bar that cannot know its own total must not draw itself like one that can
+   (DESIGN.md:957-959). */
+.job-progress-estimated .progress-fill {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-primary) 0 6px,
+    var(--color-primary-soft) 6px 12px
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * Comparison & diff (DESIGN.md:883-902)
+ * -------------------------------------------------------------------------- */
+.compare-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-xs);
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-md);
+}
+.compare-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+.compare-side + .compare-side {
+  padding-top: var(--space-xxs);
+  border-top: 1px solid var(--color-hairline);
+}
+.compare-side code {
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compare-selects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.compare-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--color-hairline-soft);
+}
+.compare-block h4 {
+  margin: 0;
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-ink);
+}
+.diff-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--color-hairline-soft);
+  min-width: 0;
+}
+.diff-row:last-child { border-bottom: none; }
+.diff-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+.diff-row-head code {
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+  overflow-wrap: anywhere;
+}
+.diff-row-head span {
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+  text-align: right;
+}
+/* Signed, but never coloured by sign: improvement is direction-dependent and
+   must be declared per metric (DESIGN.md:898). */
+.delta-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-metric-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.2px;
+  color: var(--color-ink);
+}
+.delta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.delta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.delta-cell span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.id-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.id-columns > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  min-width: 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * A3 · data-table with dense rows
+ * -------------------------------------------------------------------------- */
+.data-table-wrap { overflow-x: auto; }
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+.data-table thead th {
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption-upper);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  text-align: left;
+  padding: var(--space-xxs) var(--space-xs);
+  border-bottom: 1px solid var(--color-hairline);
+}
+.data-table tbody td {
+  padding: var(--space-xxs) var(--space-xs);
+  border-bottom: 1px solid var(--color-hairline-soft);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr {
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.data-table tbody tr:hover { background: var(--color-surface-soft); }
+.data-table tbody tr.selected {
+  background: var(--color-primary-soft);
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+.data-table-row-dense {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding: var(--space-xxs) 0;
+  border-bottom: 1px solid var(--color-hairline-soft);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+}
+.data-table-row-dense:last-child { border-bottom: none; }
+.data-table-row-dense code,
+.data-table-row-dense span,
+.data-table-row-dense small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-code-inline);
+}
+.data-table-row-dense span,
+.data-table-row-dense small { color: var(--color-muted); }
+
+/* -----------------------------------------------------------------------------
+ * A6b · histogram-row — progress-track geometry, chart-primary fill
+ * -------------------------------------------------------------------------- */
+.histogram-row {
+  display: grid;
+  grid-template-columns: 6em minmax(0, 1fr) 3.5em;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-muted);
+}
+.histogram-bar {
+  height: 6px;
+  background: var(--color-hairline-soft);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.histogram-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--color-chart-primary);
+}
+.histogram-count {
+  text-align: right;
+  color: var(--color-body-strong);
+}
+
+/* -----------------------------------------------------------------------------
+ * A7 · pill-verdict-* — a fourth pill family for a per-crossing verdict.
+ * `excluded` is muted, not red: an exclusion is a decision the operator asked
+ * for, not a failure (the same argument DESIGN.md:941 makes about a red zone).
+ * -------------------------------------------------------------------------- */
+.pill-verdict-confirmed { background: var(--color-success-soft);  color: var(--color-success); }
+.pill-verdict-flagged   { background: var(--color-warning-soft);  color: var(--color-warning); }
+.pill-verdict-excluded  { background: var(--color-hairline-soft); color: var(--color-muted); }
+.pill-verdict-rejected  { background: var(--color-danger-soft);   color: var(--color-danger); }
+
+/* -----------------------------------------------------------------------------
+ * Inspector detail grids
+ * -------------------------------------------------------------------------- */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.detail-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.detail-cell span {
+  font-size: var(--fs-caption);
+  color: var(--color-muted);
+}
+.detail-cell strong {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-body-strong);
+}
+.flag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xxs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+}
+.flag-grid > span {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-xxs);
+  color: var(--color-muted);
+}
+.flag-grid strong { color: var(--color-body-strong); }
+.stat-pair {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code-inline);
+  color: var(--color-muted);
+}
+.stat-pair strong { color: var(--color-body-strong); }
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  font-size: var(--fs-body-sm);
+}
+
+/* -----------------------------------------------------------------------------
+ * Focus — the system's 3px azure-alpha ring, on every control
+ * -------------------------------------------------------------------------- */
+.replay button:focus-visible,
+.replay summary:focus-visible,
+.replay a:focus-visible,
+.replay label:focus-visible,
+.replay .hint:focus-visible {
+  outline: 3px solid var(--color-primary-ring);
+  outline-offset: 1px;
+}
+.replay .data-table tbody tr:focus-visible {
+  outline: 3px solid var(--color-primary-ring);
+  outline-offset: -3px;
+}
+
+/* -----------------------------------------------------------------------------
+ * Responsive — one breakpoint at the documented 900px, plus the 640px reflow
+ * -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  /* One column, DOM order preserved: rail, viewer, inspector. Keyboard and
+     screen-reader order stay correct with no `order:` tricks. */
+  .replay-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .tool-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compare-selects,
+  .id-columns,
+  .delta-grid { grid-template-columns: 1fr; }
+  .histogram-row { grid-template-columns: 5em minmax(0, 1fr) 3em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay *,
+  .replay *::before,
+  .replay *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

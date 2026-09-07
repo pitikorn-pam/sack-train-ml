@@ -52,6 +52,23 @@
   --color-status-succeeded: var(--color-success);
   --color-status-failed: var(--color-danger);
   --color-status-cancelled: #6b7280;
+  /* A suite is not a run: `incomplete` is amber so it can never read as a clean one.
+     DESIGN.md:44, :622. */
+  --color-status-partial: var(--color-warning);
+
+  /* -------------------- Colors: Provenance sources -------------------- */
+  /* The three ways a value can have arrived. Deliberately not amber — amber means
+     "warning" everywhere else, and a default is not a warning. DESIGN.md:46-52. */
+  --color-source-set: var(--color-primary);
+  --color-source-default: var(--color-muted);
+  --color-source-derived: var(--color-accent-cyan);
+
+  /* -------------------- Colors: Video overlay roles -------------------- */
+  /* A fourth colour family, distinct from status pills: a red zone does not mean
+     "failed", it means "excluded". DESIGN.md:54-58, :941. */
+  --color-overlay-line: var(--color-accent-cyan);
+  --color-overlay-zone: var(--color-danger);
+  --color-overlay-draft: var(--color-warning);
 
   /* -------------------- Chart palette -------------------- */
   --color-chart-primary: var(--color-primary);

@@ -17,7 +17,7 @@ import { Overview } from "./sections/Overview";
 import { Train } from "./sections/Train";
 import { Models } from "./sections/Models";
 import { Storage } from "./sections/Storage";
-import { Lab } from "./sections/Lab";
+import { Replay } from "./sections/Replay";
 
 /**
  * The section a URL names. Kept as a type so a typo in a path is a compile error rather
@@ -35,7 +35,10 @@ export const SECTIONS: { key: Section; label: string; path: string }[] = [
   { key: "train", label: "Train", path: "/train" },
   { key: "models", label: "Models", path: "/models" },
   { key: "storage", label: "Storage", path: "/storage" },
-  { key: "lab", label: "Lab", path: "/lab" },
+  // The key stays `lab` — App.routing.test.tsx pins the five section keys, and the
+  // Replay / Suites split of the IA is a later step. The label and the path are the
+  // instrument's own name; /lab still resolves, see the redirect below.
+  { key: "lab", label: "Replay", path: "/replay" },
 ];
 
 export const pathForSection = (s: Section) =>
@@ -137,7 +140,10 @@ function AppInner() {
           <Route path="/train" element={<Train />} />
           <Route path="/models" element={<Models isAdmin={isAdmin} />} />
           <Route path="/storage" element={<Storage isAdmin={isAdmin} />} />
-          <Route path="/lab" element={<Lab />} />
+          <Route path="/replay" element={<Replay />} />
+          {/* /lab was this section's path until the re-skin. Any link already saved or
+              bookmarked still resolves; `replace` keeps the old path out of history. */}
+          <Route path="/lab" element={<Navigate to={to("/replay")} replace />} />
           {/* An unknown path lands on Overview rather than a blank screen, and `replace`
               keeps it out of history so Back does not bounce between the two. */}
           <Route path="*" element={<Navigate to={to("/overview")} replace />} />

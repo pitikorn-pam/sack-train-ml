@@ -8,7 +8,7 @@
  *   2. PUT file bytes to upload_url (presigned R2 PUT, 15 min TTL)
  *   3. Report back {yaml_key, bundle_key} to parent
  *
- * Also exposes the YAML text content to the parent so NewRun can parse
+ * Also exposes the YAML text content to the parent so NewRunV3 can parse
  * class names locally without re-fetching.
  */
 import { useState } from "react";
