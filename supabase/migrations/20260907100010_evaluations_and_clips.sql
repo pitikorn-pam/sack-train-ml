@@ -109,8 +109,11 @@ create table public.clips (
   -- avg_frame_rate, and rather than trust the ingest tool to have used it, the raw
   -- probe is stored and its packet count is required to be present. A row whose
   -- frame count was guessed cannot be inserted at all.
+  -- Same NULL-passes-CHECK trap as above: jsonb_exists returns a real boolean rather
+  -- than NULL for a missing key, so this one is already tight. Kept explicit so the
+  -- next person does not "simplify" it into `probe ? 'nb_read_packets'` and lose that.
   constraint clips_frame_count_is_measured
-    check (jsonb_exists(probe, 'nb_read_packets')),
+    check (jsonb_exists(probe, 'nb_read_packets') is true),
 
   -- Each kind of truth carries its own obligations.
   constraint clips_gt_count_needs_a_number
@@ -306,14 +309,18 @@ create table public.evaluations (
   -- and a Pi — so it lives here, where all three pass through, rather than in three
   -- copies of a convention. reportable defaults to false: a row that says nothing
   -- about where it came from cannot claim to be reportable.
+  -- Written with coalesce and text comparison on purpose, and it matters. A CHECK
+  -- constraint PASSES when its expression evaluates to NULL, not just when it is true.
+  -- `provenance ->> 'fps_measured'` returns SQL NULL when the key holds a JSON null, so
+  -- `(... )::boolean` would yield NULL and the whole conjunction would be NULL — and the
+  -- row would be admitted. A cast would also raise on any value that is not a boolean
+  -- literal, turning a lie into a confusing 500 instead of a clean refusal. Comparing
+  -- coalesced text against the exact string the jsonb representation produces closes both.
   constraint evaluations_reportable_requires_provenance check (
     reportable = false or (
-          jsonb_exists(provenance, 'source_kind')
-      and provenance ->> 'source_kind' in ('registered_session', 'original_capture')
-      and jsonb_exists(provenance, 'fps_measured')
-      and (provenance ->> 'fps_measured')::boolean
-      and jsonb_exists(provenance, 'count_origin')
-      and provenance ->> 'count_origin' = 'machine'
+          coalesce(provenance ->> 'source_kind', '') in ('registered_session', 'original_capture')
+      and coalesce(provenance ->> 'fps_measured', '') = 'true'
+      and coalesce(provenance ->> 'count_origin', '') = 'machine'
     )
   )
 );

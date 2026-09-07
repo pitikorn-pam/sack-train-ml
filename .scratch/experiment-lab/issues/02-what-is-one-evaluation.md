@@ -149,12 +149,23 @@ and a Pi — so it belongs in the table:
 ```sql
 alter table public.evaluations add constraint reportable_requires_provenance check (
   reportable = false or (
-        provenance ? 'source_kind' and provenance->>'source_kind' in ('registered_session','original_capture')
-    and provenance ? 'fps_measured'  and (provenance->>'fps_measured')::boolean
-    and provenance ? 'count_origin'  and provenance->>'count_origin' = 'machine'
+        coalesce(provenance ->> 'source_kind', '') in ('registered_session','original_capture')
+    and coalesce(provenance ->> 'fps_measured', '') = 'true'
+    and coalesce(provenance ->> 'count_origin', '') = 'machine'
   )
 );
 ```
+
+**Why `coalesce` and a text comparison, and not the obvious `?` / `::boolean` form.** A first
+draft of this constraint used `provenance ? 'fps_measured' and (provenance->>'fps_measured')::boolean`,
+and it had a hole precisely where the gate matters most. **A CHECK constraint passes when its
+expression evaluates to NULL**, not only when it is true. `->>` returns SQL NULL when the key
+holds a JSON `null`, so the cast yields NULL, the whole conjunction collapses to NULL, and the
+row is admitted — a row claiming `reportable` with no real provenance, waved through by the
+guardrail built to stop exactly that. The cast is also unsafe in the other direction: any value
+that is not a boolean literal raises, turning a lie into a confusing 500 rather than a clean
+refusal. Comparing coalesced text against the exact string jsonb produces closes both, and the
+migration carries this reasoning as a comment so nobody "simplifies" it back.
 
 `reportable` defaults to **false**. A row that says nothing about where it came from cannot
 claim to be reportable, and no amount of prose in a README can be forgotten into it. The
