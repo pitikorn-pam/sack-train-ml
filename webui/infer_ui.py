@@ -4,7 +4,10 @@ Upload a video, pick a .pt model, tune conf / NMS-IoU / classes with sliders, ru
 detection, watch + download the annotated mp4. Runs the trained .pt on Mac (MPS/CPU)
 — a CONFIG-EXPLORATION tool, not the Hailo edge deploy-truth path.
 
-Run:  /Users/pitikorn/Work/BSCP/sack-train-ml/.venv/bin/python webui/infer_ui.py
+Install:  pip install -e ".[webui]"      (gradio is an optional extra, not a
+                                         pipeline dependency — it was previously
+                                         undeclared, so this could not run at all)
+Run:      python webui/infer_ui.py
 Then open the printed http://127.0.0.1:7860 in a browser.
 
 Loom Oracle (AI), 2026-08-09.

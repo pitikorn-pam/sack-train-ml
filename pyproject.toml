@@ -27,6 +27,24 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
 ]
+# The manual inference playground at webui/infer_ui.py. Optional because it is a
+# config-exploration tool, not part of the pipeline — but it was undeclared entirely,
+# so the script existed, imported gradio, and could not run for anyone. A script that
+# cannot start is not a lighter dependency than a declared one.
+#   pip install -e ".[webui]" && python webui/infer_ui.py
+webui = [
+    "gradio>=4.44",
+    "opencv-python>=4.10",
+]
+# The Lab's counting backend and its API. Declared because relying on ultralytics to
+# pull these in transitively is how an environment breaks silently later.
+lab = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "opencv-python>=4.10",
+    "scipy>=1.11",
+    "lap>=0.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

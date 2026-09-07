@@ -57,11 +57,19 @@ serve(async (req) => {
   if (!body.version_id) return json({ error: "version_id required" }, 400);
 
   if (action === "archive") {
-    await sb
+    // RLS turns a forbidden update into a zero-row match rather than an error, so an
+    // unchecked write reports success for an action that did nothing. Asking what was
+    // touched is the only way to tell them apart — and the count is worth returning:
+    // archiving a version that had no active deployment is a no-op the caller should
+    // see, not a success it should celebrate.
+    const { data: archived, error } = await sb
       .from("channel_deployments")
       .update({ status: "archived" })
-      .eq("version_id", body.version_id);
-    return json({ archived: body.version_id });
+      .eq("version_id", body.version_id)
+      .eq("status", "active")
+      .select("id");
+    if (error) return json({ error: "archive_failed", detail: error.message }, 500);
+    return json({ archived: body.version_id, deployments_archived: archived?.length ?? 0 });
   }
 
   // delete: refuse if any active deployment references it
