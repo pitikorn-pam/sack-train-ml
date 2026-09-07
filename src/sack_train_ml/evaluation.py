@@ -47,6 +47,11 @@ def normalize_metrics(raw: dict[str, Any]) -> dict[str, float]:
     return out
 
 
+# Metrics are reported to four decimals at most; a tolerance well below that cannot
+# admit a genuine regression and cannot reject a genuine pass.
+_FLOAT_TOLERANCE = 1e-9
+
+
 def gate_check(
     fp32_eval: dict[str, Any] | str | Path,
     int8_eval: dict[str, Any] | str | Path,
@@ -64,7 +69,11 @@ def gate_check(
             reason="missing map50 in one of the eval files",
         )
     delta = fp_map - iq_map
-    passed = delta <= max_map_drop
+    # A model exactly at the threshold must pass it. Without the tolerance it does not:
+    # 0.90 - 0.87 is 0.030000000000000027 in binary floating point, so a drop of exactly
+    # 0.03 fails a gate whose limit is 0.03. This repo has a recorded lesson about
+    # thresholds the measurement cannot reach reading as a failed result; this was one.
+    passed = delta <= max_map_drop + _FLOAT_TOLERANCE
     return GateVerdict(
         passed=passed, fp32_map=fp_map, int8_map=iq_map, delta=delta,
         reason=(
