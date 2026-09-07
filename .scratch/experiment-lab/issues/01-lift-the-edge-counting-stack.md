@@ -1,7 +1,7 @@
 # 01 — What does the device's counting stack actually depend on, and can it be lifted out?
 
 Type: research
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -37,3 +37,49 @@ and here is what entangles it*. No code changes; this ticket only establishes fa
 
 Blocks [05](./05-where-the-shared-engine-lives.md), which decides how the thing is packaged
 once we know what it is.
+
+## Answer
+
+**Verdict: it lifts behind a defined backend interface — and the interface already exists,
+implemented three times.** Full inventory, with `path:line` for every claim:
+[`research/01-edge-counting-inventory.md`](../research/01-edge-counting-inventory.md).
+
+This was not established by reading. The whole counting stack was **executed off-device**
+during the investigation — `EDGEROOT/.venv/bin/python`, Python 3.14.5, numpy 2.4.5, cv2
+4.13.0, scipy 1.18.0, no Hailo, no picamera2, no MQTT, no SQLite — running
+`ByteTrackWrapper()` + `RegionManager` over twelve synthetic frames of a box crossing
+x=320, and it emitted `count events = 1 | in=1 out=0`.
+
+The stack splits into a **core** that lifts and a **glue layer** that does not and should
+not: MQTT, the SQLite journal, the camera service and the Hailo backend all sit *above* the
+counting logic in `detection_loop.py`, never inside it.
+
+Three changes are required and only three — inject config instead of importing `settings`
+(four late-bound call sites), extract the confirm/flag/drop verdict out of `run_detection`
+(`detection_loop.py:1908-2019`), and add `scipy` / `lap` / `opencv-python` to the Lab's
+dependencies. Packaging and ownership are decided in
+[05](./05-where-the-shared-engine-lives.md).
+
+**Five findings that were not asked for and that change what gets built:**
+
+1. `UltralyticsBackend` (`ultralytics_backend.py:20`) is a working `.pt` backend already in
+   the edge repo implementing the exact contract, and **nothing imports it** —
+   `_create_backend` hardcodes Hailo (`sack_detector.py:2461`).
+2. **`cv-replay` is not deploy-truth on the confirm/flag split**, despite its `SKILL.md`
+   claiming to be. It hand-rolls passthrough (`cv_replay.py:190`) while the fleet runs
+   `scorer.passthrough: false` with hard vetoes.
+3. **`TRACKER_TYPE` is inert on the deployed path.** `docker-compose.yml:44` sets it and
+   `settings.py:275` reads it, but only `BoxmotTracker` consumes it, and the compose command
+   passes no `--tracker-mode`, so argparse's default selects `ByteTrackWrapper`.
+4. **Three `tuning.yaml` knobs are dead** while the file declares itself the single source of
+   truth (`tuning.yaml:17`). `counting.stale_id_frames` is never loaded at all —
+   `RegionManager.STALE_ID_FRAMES` is a hardcoded class attribute. `predictor.mode` and
+   `predictor.history_n` are loaded into settings and consumed by nothing; the healer runs on
+   `motion_predictor`'s own hardcoded defaults regardless.
+5. **`LineRegion.update` increments the count before the verdict exists** and the loop
+   reverts it for flagged events, so `region.in_count` is transiently wrong on every flagged
+   crossing. A lifted package must emit an *undecided* event instead.
+
+Items 3 and 4 are dead controls in the deployed device, not in the Lab. They are outside this
+map's destination, so they are recorded here and belong to whoever owns the edge repo — flagged,
+not fixed.
