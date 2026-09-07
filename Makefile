@@ -28,7 +28,9 @@ help:
 	@echo "and executed by Colab against the registry. See README.md."
 
 test: test-py test-contract test-web test-edge
-	@echo "all suites passed"
+	@echo
+	@echo "Done. If the edge suite reported SKIPPED above, it did not run —"
+	@echo "that is 25 tests, and they are not optional before a release."
 
 test-py:
 	@test -x "$(PYTHON)" || { \
@@ -46,6 +48,12 @@ test-web:
 	cd apps/web && npm test
 
 test-edge:
+	@command -v deno >/dev/null || { \
+	  echo "SKIPPED: deno is not installed, so the edge-function suite did not run."; \
+	  echo "  install: curl -fsSL https://deno.land/install.sh | sh"; \
+	  echo "  (25 tests — the auth boundary, the artifact allow-list, and the compat"; \
+	  echo "   signature's parity with Postgres. Not optional before a release.)"; \
+	  exit 0; }
 	deno test --allow-read --allow-env --no-check supabase/functions/
 
 build:
