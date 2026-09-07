@@ -82,7 +82,8 @@ h3.sub:first-of-type{margin-top:0}
 .note{font-size:13px;color:var(--muted);max-width:70ch;margin-top:var(--s-sm)}
 
 /* ---- token plates ----------------------------------------------------- */
-.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:var(--s-sm)}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s-sm)}
+.swatches > *{min-width:0}
 .sw{border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden;background:var(--canvas)}
 .sw .chip{height:56px}
 .sw .meta{padding:var(--s-xs) 10px}
@@ -90,7 +91,7 @@ h3.sub:first-of-type{margin-top:0}
 .sw .hx{font:400 11px/1.4 var(--mono);color:var(--muted-soft);text-transform:uppercase}
 
 .scale{border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden}
-.scale .row{display:grid;grid-template-columns:190px 1fr;gap:var(--s-md);align-items:baseline;
+.scale .row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:var(--s-md);align-items:baseline;
             padding:14px var(--s-md);border-top:1px solid var(--hairline-soft)}
 .scale .row:first-child{border-top:0}
 .scale .k{font:500 12px/1.4 var(--mono);color:var(--muted)}
@@ -110,8 +111,9 @@ h3.sub:first-of-type{margin-top:0}
 
 /* ---- primitives ------------------------------------------------------- */
 .stack{display:flex;flex-wrap:wrap;gap:var(--s-sm);align-items:center}
-.specimen{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s-md)}
-.spec{border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--s-md);background:var(--canvas)}
+.specimen{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--s-md)}
+.specimen > *{min-width:0}
+.spec{border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--s-md);background:var(--canvas);min-width:0;overflow-wrap:anywhere}
 .spec .cap{font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted-soft);
            margin-bottom:10px;display:block}
 
@@ -188,6 +190,12 @@ table.dt tr:last-child td{border-bottom:0}
 .modalmock h4{font:600 28px/1.2 var(--sans);letter-spacing:-.5px;color:var(--ink)}
 .modalmock p{font-size:14px;color:var(--body-strong);margin:var(--s-xs) 0 var(--s-lg)}
 .modalmock .acts{display:flex;justify-content:flex-end;gap:var(--s-xs)}
+@media (max-width:520px){
+  .scale .row{grid-template-columns:1fr;gap:var(--s-xs)}
+  .masthead h1{font-size:28px;letter-spacing:-.5px}
+  .sech h2{font-size:22px}
+  .scale .row > div:last-child{font-size:clamp(13px,5vw,var(--fs,48px))!important}
+}
 </style>
 </head>
 <body>
@@ -571,8 +579,8 @@ table.dt tr:last-child td{border-bottom:0}
         <thead><tr><th>Clip</th><th class="num">GT</th><th class="num">counted</th><th>State</th></tr></thead>
         <tbody>
           <tr><td>c2-occluded-01</td><td class="num">27</td><td class="num">27</td><td><span class="pill pill-succeeded">ok</span></td></tr>
-          <tr><td>c2-night-04</td><td class="num">31</td><td class="num" style="color:var(--muted-soft)">—</td><td><span class="pill pill-failed">decode error at frame 812</span></td></tr>
-          <tr><td>c1-rain-02</td><td class="num">19</td><td class="num" style="color:var(--muted-soft)">—</td><td><span class="pill pill-failed">short read: 4 100 of 7 300 frames</span></td></tr>
+          <tr><td>c2-night-04</td><td class="num">31</td><td class="num"><span style="font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted-soft)">no result</span></td><td><span class="pill pill-failed">decode error at frame 812</span></td></tr>
+          <tr><td>c1-rain-02</td><td class="num">19</td><td class="num"><span style="font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted-soft)">no result</span></td><td><span class="pill pill-failed">short read: 4 100 of 7 300 frames</span></td></tr>
         </tbody></table></div>
       <p class="note">A percentage would invite rounding to "86% done ≈ done". A fraction does not.
          Rendering a partial aggregate is not a smaller truth; it is a different and false one.</p>
