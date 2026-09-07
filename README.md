@@ -64,7 +64,16 @@ supabase db push
 
 # 3. Deploy edge functions (one-time, redeploy on change)
 supabase secrets set --env-file .env  # or list explicit vars
-supabase functions deploy --use-api --no-verify-jwt
+supabase functions deploy --use-api
+#
+# NOT --no-verify-jwt. That flag turns off the gateway's signature check, and the
+# functions' own auth helpers decode a JWT payload WITHOUT verifying it — they read
+# claims from a token the gateway is supposed to have already authenticated. With the
+# flag on, a hand-made `header.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.x` passes every check.
+#
+# Audited against the live project 2026-09-07: six deployed functions still carry
+# verify_jwt=false — download-artifact, download-dataset, start-training,
+# training-callback, upload-artifact, upload-dataset. See docs/security.md.
 
 # 4. Run the web dashboard
 cd apps/web

@@ -321,6 +321,15 @@ class RegistryClient:
             raise RegistryError(f"edge fn {name} -> {e.code}: {detail}") from None
 
     def _call_callback(self, body: dict[str, Any]) -> None:
+        # The signature is mandatory at the other end. Sending unsigned would fail every
+        # call with a 401 halfway through a run, so refuse here where the message can
+        # still name the environment variable.
+        if not self.callback_secret:
+            raise RegistryError(
+                "TRAINING_CALLBACK_SECRET is not set. training-callback requires an HMAC "
+                "signature on every event — it no longer accepts a service-role claim in "
+                "place of one, because that claim was never verified."
+            )
         raw = json.dumps(body, sort_keys=False, separators=(",", ":"))
         url = f"{self.url}/functions/v1/training-callback"
         headers = {

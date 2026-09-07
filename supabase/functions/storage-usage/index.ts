@@ -9,7 +9,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
-import { isAdmin } from "../_shared/auth.ts";
+import { isAdmin, isAuthenticated } from "../_shared/auth.ts";
 import { deleteObject } from "../_shared/r2.ts";
 import { artifactDetail, ArtifactKind, ARTIFACT_EXTENSIONS } from "../_shared/artifacts.ts";
 
@@ -22,7 +22,15 @@ serve(async (req) => {
   const sb = serviceClient();
 
   if (req.method === "GET") {
-    const { data: versions } = await sb.from("versions").select("artifacts");
+    // Its siblings all gate; this one did not, and it discloses how much is stored and
+    // in what. list-deployed-models and resolve-channel are documented as public
+    // because a device needs them; this is a dashboard readout, so the omission reads
+    // as an oversight rather than a decision. `isAuthenticated` rather than `isAdmin`:
+    // any signed-in operator may see the quota, only an admin may delete.
+    if (!isAuthenticated(req)) return json({ error: "forbidden" }, 403);
+
+    const { data: versions, error } = await sb.from("versions").select("artifacts");
+    if (error) return json({ error: "query_failed", detail: error.message }, 500);
     let used = 0;
     const byKind: Record<string, number> = {};
     for (const v of versions ?? []) {

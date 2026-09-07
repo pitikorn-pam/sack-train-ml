@@ -206,3 +206,34 @@ def test_rest_errors_carry_the_server_detail(client, monkeypatch):
     )
     with pytest.raises(RegistryError, match="permission denied"):
         client.fetch_run("run-1")
+
+
+# --------------------------------------------------------------------------
+# the signature is mandatory, and the failure has to be legible
+# --------------------------------------------------------------------------
+
+def test_it_refuses_to_send_an_unsigned_callback(monkeypatch):
+    """training-callback no longer accepts a service-role claim in place of a signature,
+    because that claim was never verified. Sending unsigned would 401 halfway through a
+    multi-hour run; refusing here names the environment variable while it can still be
+    fixed cheaply."""
+    monkeypatch.setattr(sc, "urlopen", lambda req, timeout=None: _Response(b""))
+    c = RegistryClient(supabase_url="https://x", service_role_key="k", callback_secret="")
+    with pytest.raises(RegistryError, match="TRAINING_CALLBACK_SECRET"):
+        c.finalize_run("run-1")
+
+
+def test_the_refusal_explains_why_the_old_shortcut_is_gone(monkeypatch):
+    monkeypatch.setattr(sc, "urlopen", lambda req, timeout=None: _Response(b""))
+    c = RegistryClient(supabase_url="https://x", service_role_key="k", callback_secret="")
+    with pytest.raises(RegistryError, match="never verified"):
+        c.log_metric("run-1", 1, "loss", 0.5)
+
+
+def test_log_step_still_swallows_it_because_it_is_best_effort(monkeypatch, capsys):
+    """A missing secret must not take a finished run down through the progress logger,
+    which is the one call documented as never raising."""
+    monkeypatch.setattr(sc, "urlopen", lambda req, timeout=None: _Response(b""))
+    c = RegistryClient(supabase_url="https://x", service_role_key="k", callback_secret="")
+    c.log_step("run-1", 6, "upload", "ok", "done")  # must not raise
+    assert "dropped" in capsys.readouterr().out

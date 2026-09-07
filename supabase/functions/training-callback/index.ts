@@ -77,20 +77,23 @@ serve(async (req) => {
   // header), or (b) HMAC signature. The Supabase gateway already requires a valid
   // key to reach this function; a service-role JWT is strictly stronger than a
   // shared HMAC secret, so accept it on its own.
-  const authHeader = req.headers.get("authorization") ?? "";
-  const apikeyHeader = req.headers.get("apikey") ?? "";
-  const bearer = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : authHeader.trim();
-  const hasServiceRole = isServiceRoleJwt(bearer) || isServiceRoleJwt(apikeyHeader);
-
-  if (!hasServiceRole) {
-    const secret = Deno.env.get("TRAINING_CALLBACK_SECRET");
-    if (!secret) return json({ error: "callback_secret_not_configured" }, 500);
-    const sigHeader = req.headers.get("x-training-signature") ?? "";
-    if (!(await verifySignature(rawBody, sigHeader, secret))) {
-      return json({ error: "invalid_signature" }, 401);
-    }
+  // THE HMAC IS REQUIRED. It used to be skippable by presenting a JWT whose payload
+  // said role=service_role, on the reasoning that "a service-role JWT is strictly
+  // stronger than a shared HMAC secret".
+  //
+  // That reasoning holds only if the JWT's signature is verified, and it is not —
+  // neither here (isServiceRoleJwt base64-decoded the payload and trusted it) nor at
+  // the gateway: this function is deployed with verify_jwt=false, confirmed against the
+  // live project on 2026-09-07. So `header.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.anything`
+  // skipped the signature check and could write arbitrary run status and metrics.
+  //
+  // The signature is over the exact request body, so it cannot be replayed onto a
+  // different one, and the pipeline already sends it on every call.
+  const secret = Deno.env.get("TRAINING_CALLBACK_SECRET");
+  if (!secret) return json({ error: "callback_secret_not_configured" }, 500);
+  const sigHeader = req.headers.get("x-training-signature") ?? "";
+  if (!(await verifySignature(rawBody, sigHeader, secret))) {
+    return json({ error: "invalid_signature" }, 401);
   }
 
   let event: CallbackEvent;
@@ -199,19 +202,11 @@ serve(async (req) => {
   return json({ error: "unknown_event_type" }, 400);
 });
 
-function isServiceRoleJwt(token: string): boolean {
-  if (!token) return false;
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  try {
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = payload.length % 4 ? "=".repeat(4 - (payload.length % 4)) : "";
-    const decoded = JSON.parse(atob(payload + pad));
-    return decoded?.role === "service_role";
-  } catch {
-    return false;
-  }
-}
+// isServiceRoleJwt was removed on 2026-09-07. It decoded a JWT payload without
+// verifying the signature and returned true for role=service_role, which let a
+// hand-made token skip the HMAC check above. Reading claims from an unverified
+// token is only safe where a gateway has already verified it; this function is
+// deployed with verify_jwt=false.
 
 async function verifySignature(body: string, header: string, secret: string): Promise<boolean> {
   const m = header.match(/^sha256=([0-9a-f]+)$/i);
