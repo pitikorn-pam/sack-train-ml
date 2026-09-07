@@ -9,9 +9,20 @@ import { supabase } from "../lib/supabase";
 // source of truth. A value already containing "@" is treated as a full email.
 const USERNAME_DOMAIN = "ipassion.co.th";
 
-function usernameToEmail(input: string): string {
+/** Exported for tests: this mapping is the whole of the username feature, and getting
+ *  it wrong does not error — it authenticates against an account that does not exist
+ *  and returns "Invalid login credentials", which reads as a wrong password. */
+export function usernameToEmail(input: string): string {
   const v = input.trim();
   return v.includes("@") ? v : `${v}@${USERNAME_DOMAIN}`;
+}
+
+/** Supabase returns "Invalid login credentials" for a wrong username AND a wrong
+ *  password. Repeating it verbatim tells the operator nothing they did not know, so it
+ *  is translated — and every other error is shown as-is rather than hidden behind a
+ *  generic sentence. */
+export function signInErrorMessage(raw: string): string {
+  return /invalid login credentials/i.test(raw) ? "Username or password is incorrect." : raw;
 }
 
 export function useSession(): Session | null | "loading" {
@@ -44,7 +55,7 @@ export function SignIn() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // Supabase returns "Invalid login credentials" for both wrong user + pw.
-      setError(/invalid login credentials/i.test(msg) ? "Username or password is incorrect." : msg);
+      setError(signInErrorMessage(msg));
     } finally {
       setLoading(false);
     }
