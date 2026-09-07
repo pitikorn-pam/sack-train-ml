@@ -41,6 +41,21 @@ colors:
   status-succeeded: "#10b981"
   status-failed: "#ef4444"
   status-cancelled: "#6b7280"
+  status-partial: "{colors.warning}"
+
+  # Provenance sources — the three ways a value can have arrived. Deliberately NOT
+  # amber: amber means "warning" everywhere else in this system, and a default is
+  # not a warning. Azure / muted / cyan reads as "you did this" / "nobody did this" /
+  # "the machine did this", all already inside the trinity.
+  source-set: "{colors.primary}"
+  source-default: "{colors.muted}"
+  source-derived: "{colors.accent-cyan}"
+
+  # Overlay roles on video. A FOURTH colour family, distinct from status pills: a red
+  # zone does not mean "failed", it means "excluded".
+  overlay-line: "{colors.accent-cyan}"
+  overlay-zone: "{colors.danger}"
+  overlay-draft: "{colors.warning}"
 
 typography:
   display-xl:
@@ -151,6 +166,12 @@ typography:
     fontWeight: 500
     lineHeight: 1.4
     letterSpacing: 0
+  micro-uppercase:
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    fontSize: 11px
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: 0.8px
 
 rounded:
   xs: 3px
@@ -180,6 +201,12 @@ elevation:
   raise-lg: "0 10px 15px -3px rgba(11,18,32,0.08), 0 4px 6px -4px rgba(11,18,32,0.06)"
   raise-xl: "0 20px 25px -5px rgba(11,18,32,0.1), 0 8px 10px -6px rgba(11,18,32,0.08)"
   focus-ring: "0 0 0 3px {colors.primary-ring}"
+
+motion:
+  fast: "120ms ease-out"     # hover / press feedback, focus ring
+  base: "180ms ease-out"     # panel and popover entry, progress fill
+  slow: "260ms ease-out"     # modal, toast, notification popover
+  reduced: "respect prefers-reduced-motion; drop every duration to 0.01ms"
 
 components:
   top-nav:
@@ -592,6 +619,10 @@ A run / version / deployment is always exactly one of these five states; the pil
 - **Failed** (`{colors.status-failed}` — #ef4444, red).
 - **Cancelled** (`{colors.status-cancelled}` — #6b7280, slate-gray).
 
+**A suite is not a run, and does not use this vocabulary.** A suite over a set of clips is `complete` / `incomplete` / `failed`, and `incomplete` takes **Partial** (`{colors.status-partial}` — amber). Amber, not green, because an incomplete suite must never be able to look like a clean one. See *Partial Results*.
+
+**Deployment state is a separate pill family from run state.** A version can be `succeeded` as a run and `active` as a deployment at the same time; they answer different questions and are allowed different pills.
+
 ## Typography
 
 ### Font Family
@@ -778,6 +809,51 @@ A pricing card at 12–16px radius reads as "rounded card, friendly product". A 
 
 **`hint-tooltip`** — The popover content of a hint. Background `{colors.ink}` (deep navy — inverted from the surrounding canvas), text `{colors.on-dark}`, `{typography.body-sm}`, rounded `{rounded.md}`, padding 8px × 10px, `{elevation.raise-lg}` shadow. Width caps at 260px. Appears above the label with an 8px gap; positions auto-flip if near the viewport edge.
 
+### Refusal & Locked States
+
+The escalation above `field-error-text`. **A control that cannot be used is disabled and says why, naming the mechanism. There is no "proceed anyway."**
+
+**`refusal-banner`** — A blocking issue in a form or panel. `⛔` glyph (14px) · one sentence naming the mechanism · optional `chip` carrying the offending key. Background `{colors.danger-soft}`, text `{colors.danger}`, 3px left border `{colors.danger}`, rounded `{rounded.md}`, padding 8px × 10px, `{typography.body-sm}`. Same geometry as `callout-info`, so it joins the callout family rather than starting a new one.
+
+**`warning-banner`** — The non-blocking sibling. Identical anatomy, `{colors.warning-soft}` / `{colors.warning}`, `⚠` glyph. The distinction from `refusal-banner` **must be legible at a glance** — the severity split is the whole point, and a reader who has to compare two banners to tell blocking from advisory has already lost.
+
+**`locked-panel`** — A whole capability that is unavailable, replacing the panel's body. `{typography.micro-uppercase}` label in `{colors.muted}` naming what is locked · a one-line reason naming the mechanism · optional second line saying what would unlock it. Background `{colors.surface-soft}`, 1px dashed `{colors.hairline}`, rounded `{rounded.lg}`, padding `{spacing.md}`.
+
+Built on `empty-state` and inheriting its rule: always give the operator the next action. **A locked panel is an empty state with a cause.**
+
+**`button-primary-blocked`** — The submit variant that carries the count. Label becomes `Fix {n} blocking issue{s}`, `disabled`, background `{colors.hairline}`, text `{colors.muted}`. The count is the affordance: it tells the operator how much work is left before the button turns.
+
+**The copy rule.** The reason sentence is authored **once, next to the mechanism**, and rendered verbatim. `contracts/param-schema.json` holds it for a refused parameter; the form renders it; no screen re-words it. A reason that drifts between screens is a reason nobody can act on.
+
+### Provenance
+
+**Don't render a measured number without its source in the same visual block. Which clip, which artifact, no click.**
+
+This project has lost hours to numbers whose source nobody could name, and a `.pt` number placed beside a `.hef` number without a label is the failure the whole evaluation effort exists to close. Provenance is therefore a component, not a convention.
+
+**`source-dot`** — 7px square, `{rounded.xs}`, filled from `{colors.source-set}` / `{colors.source-default}` / `{colors.source-derived}`. Sits before a key in a resolved-config list.
+
+**`source-legend`** — The three dots with their sentences: *you set it* / *default — nobody typed this* / *derived*. `{typography.caption}` in `{colors.muted}`, 12px gap between entries.
+
+**`provenance-strip`** — The one-line strip that sits **inside** the card carrying a number, directly under the numeral. Never in a tooltip, never behind a disclosure.
+
+Left to right:
+
+| Element | Type | Rule |
+|---|---|---|
+| artifact `chip` | `{typography.code-inline}` | e.g. `v1.4.2 · pt`. The artifact kind is **always visible** — `.pt` and `.hef` numbers must be distinguishable on sight |
+| `·` | `{colors.hairline}` | separator |
+| clip name | `{typography.caption}` in `{colors.body}` | truncates from the **left**, so the distinguishing tail survives |
+| `·` | | |
+| frame range | `{typography.code-inline}` in `{colors.muted}` | shown **only when the run was partial** — a whole-clip run says nothing, so a frame range on screen always means "not the whole clip" |
+| reportable | `pill-success` "reportable" or `pill-warning` "unverified" | right-aligned; driven by the record, never by the renderer |
+
+`{typography.caption}`, `{colors.muted}`, 1px top border `{colors.hairline-soft}`, padding-top `{spacing.xxs}`. **Deliberately quiet**: it has to be present on every number, which means it cannot be loud on any of them.
+
+**`kpi-card-sourced`** — `kpi-card` + `provenance-strip`. **In the Lab this variant is mandatory and a bare `kpi-card` is not permitted.** That is what turns "every number shows its provenance" from an intention into something a review can fail.
+
+**`provenance-block`** — The multi-value readout: a `{typography.micro-uppercase}` label over a two-column key/value grid in `{typography.code-inline}`. Used for path, geometry and decision provenance.
+
 ### Tags / Badges / Pills
 
 **`pill-default`** — Generic neutral pill. Background `{colors.surface-card}`, text `{colors.body-strong}`, `{typography.caption}`, rounded `{rounded.pill}`, padding 2px × 10px.
@@ -804,6 +880,27 @@ A pricing card at 12–16px radius reads as "rounded card, friendly product". A 
 
 Tables NEVER use vertical separators between columns. Horizontal hairlines only. Column alignment is text-left by default; numeric columns text-right with monospace.
 
+### Comparison & Diff
+
+A diff is a table with a stance. **A comparison names both sides at the top and never renders a delta without both absolute values** — every metric reads `{delta} · {key} · {baseline} → {current}`.
+
+**`compare-header`** — Two `provenance-strip`s stacked, labelled `baseline` and `candidate`, separated by a hairline.
+
+**`compare-header` has a refused state, and it is mandatory.** When the two sides differ in counting config, or in artifact kind, the header renders a `refusal-banner` naming which one moved **and the diff table below does not render at all**:
+
+- *Different counting config* — the one-lever discipline is only meaningful if the tool can say the lever moved.
+- *Different artifact kind* — a `.pt` number beside a `.hef` number, unlabelled, is the bug class this system exists to close.
+
+This is the strongest argument for building Refusal and Provenance before anything else: the comparison view is unbuildable without both, and comparison is the product's actual verb.
+
+**`delta-value`** — A signed number in `{typography.metric-numeral-sm}`. `{colors.success}` for an improvement, `{colors.danger}` for a regression, `{colors.muted}` at zero.
+
+**Improvement is direction-dependent and must be declared per metric, never inferred from sign.** Fewer missed is better. More counted is better against an undercount and worse against an overcount. A component that reads the sign is guessing, and it will be confidently wrong exactly when the number matters.
+
+**`diff-row`** — One clip per row: clip name · ground truth · baseline counted · candidate counted · `delta-value` · a link to the disagreeing frames. Built on `data-table-row`, numeric columns right-aligned in mono.
+
+**Hierarchy, stated as a rule: event-level differences are primary, aggregate deltas are secondary.** Express it with `{typography.title-sm}` versus `{typography.caption}` and with panel order — not with opacity. Opacity as hierarchy is not a device this system documents, and a dimmed panel reads as disabled.
+
 ### Charts
 
 **`metric-chart-svg`** — The SVG canvas for the metric trend chart. Background `{colors.surface-soft}` (slight tint to differentiate from white panel), rounded `{rounded.lg}`. The SVG covers the full panel width with a fixed viewBox; the parent panel handles padding.
@@ -827,11 +924,64 @@ Stroke width is **1.6px**; show points (toggle) renders 2px filled circles in th
 
 The metric-pill toolbar above the chart uses the same color tokens: each pill displays a small color dot (8px circle) matching its line color, the metric name, and the latest value in monospace.
 
+### Video Surface & Overlays
+
+The other data-bearing canvas.
+
+**`video-surface`** — 16:9 container, background `{colors.surface-dark}`, rounded `{rounded.lg}`, `object-fit: contain` with letterbox bars in the same `{colors.surface-dark}`. This is a legitimate use of the dark surface — a video well is a data-dense panel, and it is the one place in the product where dark is correct.
+
+**`overlay-line`** — 2px stroke `{colors.overlay-line}`, endpoint handles as filled circles of the same colour, radius `max(4px, videoWidth / 160)`. **Overlay stroke scales with source resolution, not with display size** — a line drawn at one zoom must land on the same pixels at another.
+
+**`overlay-zone`** — Closed polygon, 2px stroke `{colors.overlay-zone}`, fill at 20% alpha. A disabled zone drops to `{colors.muted}` at 12%.
+
+**`overlay-draft`** — Points placed but not committed. Stroke `{colors.overlay-draft}`, open path, vertex dots.
+
+Three rules:
+
+- **Overlay colours are a fourth colour family, distinct from status pills.** A red zone does not mean "failed"; it means "excluded". Nothing on a video surface carries status semantics.
+- **A click on a letterbox bar is refused with a reason** — *"Click inside the rendered video area, not the letterbox bars."* This is the refusal pattern applied to a canvas, and it is the example proving the pattern generalises past forms.
+- **Geometry is pixel-space, anchored to a stated frame.** Say which frame, on screen. Geometry with no anchor is geometry that silently stops being true when the camera moves.
+
 ### Progress
 
 **`progress-track`** — Background container. `{colors.hairline-soft}`, height 6px, rounded `{rounded.pill}`.
 
 **`progress-fill`** — The filled bar. Background a linear-gradient from `{colors.primary}` to `{colors.primary-hover}` for a slight depth feel, height 6px, rounded `{rounded.pill}`. Width controlled by parent.
+
+### Long-Running Jobs
+
+Extends Progress; `progress-track` and `progress-fill` are unchanged.
+
+**`job-progress`** — The block wrapping a `progress-track`: mode label (`{typography.title-sm}`) · percent (`{typography.metric-numeral-sm}`) · the bar · a meta row of `n / N frames` · `elapsed` · `ETA` in `{typography.code-inline}` `{colors.muted}` · a one-line status sentence in `{typography.caption}`.
+
+**`job-progress-measured` versus `job-progress-estimated`.** A measured bar is filled `{colors.primary}`. An estimated bar is filled with a 45° repeating stripe of `{colors.primary}` / `{colors.primary-soft}`, **caps at 95%**, and says in its status line that it is an estimate.
+
+This is the provenance rule applied to progress: **a percentage is a number, so it shows where it came from.** A bar that cannot know its own total must not draw itself the same way as one that can, and it must never reach 100% by guessing.
+
+**`job-cancel`** — `button-ghost` beside the bar.
+
+**`job-failed`** — A `refusal-banner` carrying **the server's own message**, plus a `button-secondary` "Retry". Prefer the specific message over a generic string every time; a generic failure sentence sends the operator to look in the wrong place.
+
+### Partial Results
+
+**The only genuinely net-new component in this system, and the one with the strongest rule behind it.**
+
+A run, version or deployment is one of five states. **A suite is not**: its vocabulary is `complete` / `incomplete` / `failed`, and `partial` is amber rather than green because the governing rule is that **an incomplete suite must never be able to look like a clean one.**
+
+**`pill-partial`** — `{colors.warning-soft}` background, `{colors.warning}` text, label `partial`. Same geometry as every other pill.
+
+**`partial-summary`** — The headline block for an incomplete suite:
+
+- **A completion fraction, not a percentage** — `12/14 clips · 2 failed` in `{typography.metric-numeral}`. A percentage invites rounding to "86% done ≈ done". A fraction does not.
+- **A segmented bar** on a `progress-track`: succeeded `{colors.success}` · failed `{colors.danger}` · pending `{colors.hairline}`.
+- **The headline number is suppressed entirely unless the suite is complete**, replaced by `{typography.micro-uppercase}` text reading `INCOMPLETE — 1 clip failed, 1 pending`.
+- **The failed clips are reachable in one click**, each carrying its own error string.
+
+The suppression is the load-bearing decision. It is the design-system expression of the rule that an unclean finalization state is not a result, and it is the same fail-closed instinct as a provenance flag defaulting to false. **Rendering a partial aggregate is not a smaller truth; it is a different and false one.**
+
+**`suite-headline`** — The complete case, designed so the two can never be confused. Total counted versus total expected in `{typography.metric-numeral}`, with the per-clip accuracy distribution beside it — so a suite that is right on aggregate while being wrong on both tails cannot hide. When the total and the per-clip mean disagree beyond a threshold, the block **says so in a `warning-banner` rather than picking a winner**. It carries a `provenance-strip` like every other number.
+
+**`partial-row`** — A `diff-row` whose candidate cell is empty, carrying `pill-partial` or `pill-failed` plus the reason instead of a number. **Never a dash, never a zero.** A clip that counted nothing and a clip that failed to decode must not render the same way.
 
 ### Modals
 
@@ -894,6 +1044,8 @@ Variants exist for warning (`{colors.warning-soft}` background, `{colors.warning
 - Use **hairlines as the default elevation**. Shadows belong on toasts, tooltips, modals, and notification popovers only.
 - Apply `{spacing.section}` (56px) MAX between sections. Tighter dashboard density wins.
 - Pair `{component.code-window-card}` and `{component.log-stream-card}` with the surrounding white surface — the dark navy IS the contrast.
+- **Refuse with a reason, and name the mechanism.** A control that cannot be used is disabled and says why. Never warn and proceed — a caution the operator can click past is a defect with a disclaimer.
+- **Put a `provenance-strip` under every measured number** — which clip, which artifact — visible without a click. A number whose source needs a click is a number somebody will quote without it.
 
 ### Don't
 - Don't use cream, beige, or warm-tinted canvas. This system is white-cool, not Anthropic-warm.
@@ -906,6 +1058,9 @@ Variants exist for warning (`{colors.warning-soft}` background, `{colors.warning
 - Don't put the active nav on top of a saturated azure background; use `{colors.primary-soft}` (washed tint) so the wordmark and section title read first.
 - Don't repeat the same surface mode in two adjacent rows when alternation aids scan. Tables with `surface-soft` header → `canvas` body is a single transition, not a rhythm.
 - Don't make a panel header in the same size as a section header. Hierarchy: `display-lg` for sections, `title-lg` for panels.
+- **Don't show an aggregate over an incomplete set.** Suppress the headline entirely and show the fraction. A partial aggregate is not a smaller truth, it is a different and false one.
+- **Don't let a research surface invent its own palette.** Density comes from spacing and type, not from a second colour system. Two design systems in one binary is the defect, however dense the second one is.
+- **Don't infer "better" from the sign of a delta.** Direction is declared per metric. Fewer missed is better; more counted is not always better.
 
 ## Responsive Behavior
 
@@ -947,11 +1102,13 @@ Variants exist for warning (`{colors.warning-soft}` background, `{colors.warning
 ## Known Gaps
 
 - **Lucide icon mapping is not yet enumerated.** Components currently reference 🔔 emoji for the notification bell. Future iteration: replace with `lucide-react` `Bell` icon at 18px.
-- **Animation / transition timings** (toast slide-in, modal fade-in, metric chart hover, notification popover spring) are not formalized as tokens. Current implementation uses ad-hoc 150–250ms ease-out — fine for now, formalize when adding more motion.
-- **Dark mode** is not in scope. The system runs light-mode only. The dark surfaces (`surface-dark`) are utility surfaces for code/log, not a full dark theme. A real dark mode would need a separate token map.
+- ~~**Animation / transition timings** are not formalized as tokens.~~ **Closed.** They are now the `motion:` block in the front matter — `fast` / `base` / `slow` plus a reduced-motion rule. The durations were already shipping; they simply had no owner.
+- **Dark mode** is not in scope, and this is now load-bearing rather than incidental. The system runs light-mode only; `surface-dark` is a utility surface for code, logs and the video well, not a theme. A research surface that repaints itself dark has built an undeclared second token map — see the Don'ts.
 - **iPassion wordmark SVG** is referenced as `docs/logo/65c9f68027a94379fb020c18_iPassion-logo.png`. Future iteration: replace with an inline SVG so it can inherit theme color and scale crisply.
 - **Form validation success state** is not enumerated — only `text-input-focused` and `text-input-error`. Inline-success ticks aren't currently used; if added, would need a new component entry.
 - **Charts beyond the metric trend chart** (e.g., a bar chart of class-level mAP, a sparkline inside a KPI card) are not yet drawn. The metric trend chart is the only charting component documented.
 - **The Hailo-8L target dropdown** in the New Run form currently lists hailo8l, hailo8, hailo15 — these are hardware variants. The label copy might benefit from a per-variant `Hint` once Phase 2 supports more than hailo8l.
-- **Pre-built skeleton loaders** are not in the system. Empty states cover "no data ever"; a skeleton loader would cover "data loading right now". Replace ad-hoc "Loading…" text with `{component.skeleton-block}` in a future iteration.
+- **Pre-built skeleton loaders** are still not in the system, and this is now the largest remaining gap: the app carries several ad-hoc loading strings with no shared component. Empty states cover "no data ever"; a skeleton loader would cover "data loading right now". Replace ad-hoc "Loading…" text with `{component.skeleton-block}` in a future iteration.
 - **Internationalization** (Thai / English UI copy) is not in scope here. All UI copy is currently English; the brand voice principles apply equally to a Thai translation but the type metrics may need re-tuning (Thai needs slightly larger line-heights than Latin).
+
+- **The prototype page is the reference, and it is not yet wired to the app.** `.scratch/experiment-lab/prototype/design-system.html` renders the system standalone; the sections above are documented before they are implemented, which is deliberate — but until a screen consumes them, this document describes an intention on the surfaces it has not reached.

@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sack-train-ml — design system reference</title>
+<style>
+/* ============================================================================
+   Every value below mirrors a token in DESIGN.md. There is no hex literal
+   outside this :root block — that is the page's main claim, and it is meant to
+   be checkable with a grep.
+   ========================================================================= */
+:root{
+  --primary:#0080c8; --primary-active:#0066a2; --primary-hover:#1e8fd1;
+  --primary-soft:#e5f2fa; --primary-ring:#0080c833;
+  --ink:#0b1220; --body-strong:#1f2937; --body:#374151;
+  --muted:#6b7280; --muted-soft:#9ca3af;
+  --hairline:#e5e7eb; --hairline-soft:#f1f3f5;
+  --canvas:#ffffff; --surface-soft:#fafbfc; --surface-card:#f5f7fa; --surface-card-strong:#eef2f6;
+  --surface-dark:#0b1a2c; --surface-dark-elevated:#13243a; --surface-dark-soft:#0f1f33;
+  --on-primary:#ffffff; --on-dark:#f8fafc; --on-dark-soft:#a3b1c2;
+  --accent-sky:#38bdf8; --accent-cyan:#06b6d4;
+  --success:#10b981; --success-soft:#d1fae5;
+  --warning:#f59e0b; --warning-soft:#fef3c7;
+  --danger:#ef4444;  --danger-soft:#fee2e2;
+  --info:#3b82f6;    --info-soft:#dbeafe;
+  --status-pending:#9ca3af; --status-running:#0080c8; --status-succeeded:#10b981;
+  --status-failed:#ef4444; --status-cancelled:#6b7280; --status-partial:#f59e0b;
+  --source-set:#0080c8; --source-default:#6b7280; --source-derived:#06b6d4;
+  --overlay-line:#06b6d4; --overlay-zone:#ef4444; --overlay-draft:#f59e0b;
+
+  --r-xs:3px; --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px; --r-xxl:16px; --r-pill:9999px;
+  --s-xxs:4px; --s-xs:8px; --s-sm:12px; --s-md:16px; --s-lg:20px; --s-xl:28px; --s-xxl:40px; --s-section:56px;
+
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --e-hairline:0 0 0 1px var(--hairline);
+  --e-raise-sm:0 1px 2px rgba(11,18,32,.04),0 1px 3px rgba(11,18,32,.06);
+  --e-raise-lg:0 10px 15px -3px rgba(11,18,32,.08),0 4px 6px -4px rgba(11,18,32,.06);
+  --e-raise-xl:0 20px 25px -5px rgba(11,18,32,.1),0 8px 10px -6px rgba(11,18,32,.08);
+  --e-focus:0 0 0 3px var(--primary-ring);
+
+  --m-fast:120ms ease-out; --m-base:180ms ease-out; --m-slow:260ms ease-out;
+}
+@media (prefers-reduced-motion:reduce){
+  :root{--m-fast:.01ms linear;--m-base:.01ms linear;--m-slow:.01ms linear}
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--canvas);color:var(--body);font:400 14px/1.55 var(--sans);
+     overflow-x:hidden;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p,ul,ol,figure{margin:0}
+a{color:var(--primary);text-underline-offset:2px}
+code,kbd{font-family:var(--mono)}
+:focus-visible{outline:none;box-shadow:var(--e-focus);border-radius:var(--r-sm)}
+
+/* ---- page frame ------------------------------------------------------- */
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s-lg)}
+.masthead{border-bottom:1px solid var(--hairline);padding:var(--s-xxl) 0 var(--s-xl)}
+.eyebrow{font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.masthead h1{font:600 36px/1.15 var(--sans);letter-spacing:-.8px;color:var(--ink);margin:var(--s-sm) 0 var(--s-xs)}
+.masthead p{max-width:64ch;color:var(--body);font-size:14px}
+.tocbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+        border-bottom:1px solid var(--hairline)}
+.toc{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;padding:var(--s-xs) 0}
+.toc::-webkit-scrollbar{display:none}
+.toc a{white-space:nowrap;font:500 13px/1 var(--sans);color:var(--muted);text-decoration:none;
+       padding:9px 12px;border-radius:var(--r-md);transition:background var(--m-fast),color var(--m-fast)}
+.toc a:hover{background:var(--surface-card);color:var(--ink)}
+
+section{padding:var(--s-section) 0;border-bottom:1px solid var(--hairline-soft)}
+section:last-child{border-bottom:0}
+.sech{display:flex;align-items:baseline;gap:var(--s-sm);flex-wrap:wrap;margin-bottom:var(--s-xs)}
+.sech h2{font:600 28px/1.2 var(--sans);letter-spacing:-.5px;color:var(--ink)}
+.sech .num{font:600 11px/1.4 var(--mono);letter-spacing:.8px;color:var(--muted-soft)}
+.lede{max-width:70ch;color:var(--muted);font-size:13px;margin-bottom:var(--s-xl)}
+h3.sub{font:600 16px/1.4 var(--sans);color:var(--ink);margin:var(--s-xl) 0 var(--s-sm)}
+h3.sub:first-of-type{margin-top:0}
+.note{font-size:13px;color:var(--muted);max-width:70ch;margin-top:var(--s-sm)}
+
+/* ---- token plates ----------------------------------------------------- */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:var(--s-sm)}
+.sw{border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden;background:var(--canvas)}
+.sw .chip{height:56px}
+.sw .meta{padding:var(--s-xs) 10px}
+.sw .nm{font:500 12px/1.4 var(--mono);color:var(--ink);word-break:break-all}
+.sw .hx{font:400 11px/1.4 var(--mono);color:var(--muted-soft);text-transform:uppercase}
+
+.scale{border:1px solid var(--hairline);border-radius:var(--r-lg);overflow:hidden}
+.scale .row{display:grid;grid-template-columns:190px 1fr;gap:var(--s-md);align-items:baseline;
+            padding:14px var(--s-md);border-top:1px solid var(--hairline-soft)}
+.scale .row:first-child{border-top:0}
+.scale .k{font:500 12px/1.4 var(--mono);color:var(--muted)}
+.ruler{display:flex;flex-wrap:wrap;gap:var(--s-md);align-items:flex-end}
+.ruler .u{text-align:center}
+.ruler .bar{background:var(--primary-soft);border:1px solid var(--primary);border-radius:var(--r-xs);height:26px}
+.ruler .lbl{font:500 11px/1.4 var(--mono);color:var(--muted);margin-top:6px}
+.radii{display:flex;flex-wrap:wrap;gap:var(--s-md)}
+.radii .b{width:76px;height:56px;background:var(--surface-card-strong);border:1px solid var(--hairline);
+          display:grid;place-items:center;font:500 11px/1 var(--mono);color:var(--muted)}
+.motion{display:flex;flex-wrap:wrap;gap:var(--s-md)}
+.motion .m{border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--s-sm);min-width:180px}
+.motion .track{height:8px;background:var(--hairline-soft);border-radius:var(--r-pill);overflow:hidden;margin-top:var(--s-xs)}
+.motion .dot{height:8px;width:34%;background:var(--primary);border-radius:var(--r-pill);animation:slide 2.4s infinite alternate}
+.motion .m.fast .dot{animation-duration:1.2s} .motion .m.slow .dot{animation-duration:3.4s}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(190%)}}
+
+/* ---- primitives ------------------------------------------------------- */
+.stack{display:flex;flex-wrap:wrap;gap:var(--s-sm);align-items:center}
+.specimen{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s-md)}
+.spec{border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--s-md);background:var(--canvas)}
+.spec .cap{font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted-soft);
+           margin-bottom:10px;display:block}
+
+.btn{font:500 14px/1 var(--sans);padding:10px 16px;border-radius:var(--r-md);border:1px solid transparent;
+     cursor:pointer;transition:background var(--m-fast),box-shadow var(--m-fast),color var(--m-fast)}
+.btn-primary{background:var(--primary);color:var(--on-primary)}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-primary.is-hover{background:var(--primary-hover)}
+.btn-primary.is-active{background:var(--primary-active)}
+.btn-primary.is-focus{box-shadow:var(--e-focus)}
+.btn-secondary{background:var(--canvas);color:var(--body-strong);border-color:var(--hairline)}
+.btn-secondary:hover{background:var(--surface-card)}
+.btn-ghost{background:transparent;color:var(--primary)}
+.btn-ghost:hover{background:var(--primary-soft)}
+.btn-danger{background:var(--danger);color:var(--on-primary)}
+.btn[disabled],.btn.is-disabled{background:var(--hairline);color:var(--muted);cursor:not-allowed;border-color:transparent}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font:500 12px/1 var(--sans);
+      padding:5px 10px;border-radius:var(--r-pill)}
+.pill::before{content:"";width:6px;height:6px;border-radius:var(--r-pill);background:currentColor}
+.pill-pending{background:var(--surface-card-strong);color:var(--status-pending)}
+.pill-running{background:var(--primary-soft);color:var(--status-running)}
+.pill-succeeded{background:var(--success-soft);color:var(--status-succeeded)}
+.pill-failed{background:var(--danger-soft);color:var(--status-failed)}
+.pill-cancelled{background:var(--surface-card-strong);color:var(--status-cancelled)}
+.pill-partial{background:var(--warning-soft);color:var(--status-partial)}
+
+.field{display:block;margin-bottom:var(--s-md)}
+.field .lab{font:500 13px/1.4 var(--sans);color:var(--body-strong);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.inp{width:100%;font:400 14px/1.4 var(--sans);color:var(--ink);background:var(--canvas);
+     border:1px solid var(--hairline);border-radius:var(--r-md);padding:9px 12px;transition:border-color var(--m-fast),box-shadow var(--m-fast)}
+.inp.is-focus{border-color:var(--primary);box-shadow:var(--e-focus)}
+.inp.is-error{border-color:var(--danger)}
+.inp[readonly],.inp[disabled]{background:var(--surface-card);color:var(--muted);cursor:not-allowed}
+.hint{font:400 12px/1.45 var(--sans);color:var(--muted);margin-top:6px;display:block}
+.err{font:400 12px/1.45 var(--sans);color:var(--danger);margin-top:6px;display:block}
+.tag{font:500 10px/1 var(--mono);letter-spacing:.4px;text-transform:uppercase;padding:3px 6px;
+     border-radius:var(--r-xs);background:var(--surface-card-strong);color:var(--muted)}
+
+.panel{border:1px solid var(--hairline);border-radius:var(--r-xl);background:var(--canvas)}
+.panel > header{padding:var(--s-md) var(--s-lg);border-bottom:1px solid var(--hairline-soft);
+                display:flex;align-items:center;justify-content:space-between;gap:var(--s-sm);flex-wrap:wrap}
+.panel > header h4{font:600 18px/1.35 var(--sans);color:var(--ink)}
+.panel .body{padding:var(--s-lg)}
+
+table.dt{width:100%;border-collapse:collapse;font-size:13px}
+table.dt th{background:var(--surface-soft);text-align:left;font:600 11px/1.4 var(--mono);letter-spacing:.8px;
+            text-transform:uppercase;color:var(--muted);padding:10px var(--s-sm);border-bottom:1px solid var(--hairline)}
+table.dt td{padding:11px var(--s-sm);border-bottom:1px solid var(--hairline-soft);color:var(--body)}
+table.dt td.num,table.dt th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+table.dt tr:last-child td{border-bottom:0}
+.scrollx{overflow-x:auto}
+
+.callout{border-radius:var(--r-md);padding:10px 14px;font-size:13px;border-left:3px solid}
+.callout-info{background:var(--info-soft);color:var(--info);border-left-color:var(--info)}
+.callout-warn{background:var(--warning-soft);color:var(--warning);border-left-color:var(--warning)}
+.callout-danger{background:var(--danger-soft);color:var(--danger);border-left-color:var(--danger)}
+
+.empty{background:var(--surface-soft);border-radius:var(--r-lg);padding:32px;text-align:center}
+.empty .t{font:600 16px/1.4 var(--sans);color:var(--ink)}
+.empty .h{font:400 13px/1.5 var(--sans);color:var(--muted);margin-top:6px}
+
+.track{height:8px;background:var(--hairline-soft);border-radius:var(--r-pill);overflow:hidden}
+.fill{height:100%;background:var(--primary);border-radius:var(--r-pill);transition:width var(--m-base)}
+.fill.est{background:repeating-linear-gradient(45deg,var(--primary),var(--primary) 6px,var(--primary-soft) 6px,var(--primary-soft) 12px)}
+
+.toast{background:var(--canvas);border-radius:var(--r-lg);box-shadow:var(--e-raise-lg);padding:12px 16px;
+       max-width:380px;border-left:3px solid var(--success)}
+.toast .t{font:600 14px/1.4 var(--sans);color:var(--ink)}
+.toast .d{font:400 13px/1.5 var(--sans);color:var(--muted);margin-top:2px}
+
+.modalmock{background:var(--canvas);border-radius:var(--r-xl);box-shadow:var(--e-raise-xl);padding:var(--s-xl);
+           max-width:440px;border:1px solid var(--hairline)}
+.modalmock h4{font:600 28px/1.2 var(--sans);letter-spacing:-.5px;color:var(--ink)}
+.modalmock p{font-size:14px;color:var(--body-strong);margin:var(--s-xs) 0 var(--s-lg)}
+.modalmock .acts{display:flex;justify-content:flex-end;gap:var(--s-xs)}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">sack-train-ml · design system</div>
+    <h1>The system, rendered</h1>
+    <p>Every colour, size, radius and duration on this page comes from a CSS custom property mirroring
+       a token in <code>DESIGN.md</code>. There is no hex literal outside the <code>:root</code> block —
+       that claim is the point of the page, and it is meant to be checked with a grep, not taken on trust.</p>
+    <p class="note">Three rules govern everything below. <strong>Refuse with a reason, never warn and proceed.</strong>
+       <strong>Every number shows its provenance inline.</strong> <strong>A partial result never looks like a whole one.</strong>
+       The three composed scenes at the end exist to prove those rules survive contact with a real screen.</p>
+  </div>
+</header>
+
+<nav class="tocbar"><div class="wrap"><div class="toc">
+  <a href="#colour">Colour</a><a href="#type">Type</a><a href="#space">Space &amp; motion</a>
+  <a href="#core">Core components</a><a href="#states">States</a>
+  <a href="#refusal">Refusal</a><a href="#prov">Provenance</a><a href="#compare">Comparison</a>
+  <a href="#video">Video</a><a href="#jobs">Jobs</a><a href="#partial">Partial</a>
+  <a href="#scenes">Composed scenes</a>
+</div></div></nav>
+
+<main class="wrap">
+
+<section id="colour">
+  <div class="sech"><span class="num">01</span><h2>Colour</h2></div>
+  <p class="lede">White canvas, azure brand, deep navy for code and video. Status is one family;
+     provenance sources and video overlays are two more, deliberately kept apart from it — a red
+     exclusion zone does not mean "failed".</p>
+
+  <h3 class="sub">Brand &amp; surface</h3>
+  <div class="swatches" id="sw-brand"></div>
+  <h3 class="sub">Text</h3>
+  <div class="swatches" id="sw-text"></div>
+  <h3 class="sub">Semantic</h3>
+  <div class="swatches" id="sw-sem"></div>
+  <h3 class="sub">Status — a run, version or deployment</h3>
+  <div class="swatches" id="sw-status"></div>
+  <h3 class="sub">Provenance sources — how a value arrived</h3>
+  <div class="swatches" id="sw-source"></div>
+  <p class="note">Deliberately not amber. Amber means <em>warning</em> everywhere else in this system,
+     and a default is not a warning.</p>
+  <h3 class="sub">Video overlay roles — a fourth family</h3>
+  <div class="swatches" id="sw-overlay"></div>
+</section>
+
+<section id="type">
+  <div class="sech"><span class="num">02</span><h2>Type</h2></div>
+  <p class="lede">One humanist sans for everything a person reads; one mono for everything a machine produced.
+     Numbers are always mono — numerals align, prose does not.</p>
+  <div class="scale" id="typescale"></div>
+</section>
+
+<section id="space">
+  <div class="sech"><span class="num">03</span><h2>Space, radius, motion</h2></div>
+  <p class="lede">Density comes from spacing and type. It never comes from a second colour system.</p>
+  <h3 class="sub">Spacing</h3>
+  <div class="ruler" id="spacing"></div>
+  <h3 class="sub">Radius</h3>
+  <div class="radii" id="radii"></div>
+  <h3 class="sub">Motion</h3>
+  <div class="motion">
+    <div class="m fast"><div class="k" style="font:500 12px/1.4 var(--mono);color:var(--muted)">fast · 120ms</div><div class="track"><div class="dot"></div></div><div class="hint">hover, press, focus ring</div></div>
+    <div class="m"><div class="k" style="font:500 12px/1.4 var(--mono);color:var(--muted)">base · 180ms</div><div class="track"><div class="dot"></div></div><div class="hint">panel entry, progress fill</div></div>
+    <div class="m slow"><div class="k" style="font:500 12px/1.4 var(--mono);color:var(--muted)">slow · 260ms</div><div class="track"><div class="dot"></div></div><div class="hint">modal, toast, popover</div></div>
+  </div>
+  <p class="note">Every duration drops to 0.01ms under <code>prefers-reduced-motion</code>. This page honours it —
+     if your system asks for reduced motion, the bars above are still.</p>
+</section>
+
+<section id="core">
+  <div class="sech"><span class="num">04</span><h2>Core components</h2></div>
+  <p class="lede">What already shipped, documented so the new sections have something to build on.</p>
+
+  <h3 class="sub">Buttons</h3>
+  <div class="stack">
+    <button class="btn btn-primary">Start run</button>
+    <button class="btn btn-secondary">Cancel</button>
+    <button class="btn btn-ghost">View logs</button>
+    <button class="btn btn-danger">Delete version</button>
+    <button class="btn btn-primary is-disabled" disabled>Disabled</button>
+  </div>
+
+  <h3 class="sub">Status pills</h3>
+  <div class="stack">
+    <span class="pill pill-pending">pending</span>
+    <span class="pill pill-running">running</span>
+    <span class="pill pill-succeeded">succeeded</span>
+    <span class="pill pill-failed">failed</span>
+    <span class="pill pill-cancelled">cancelled</span>
+    <span class="pill pill-partial">partial</span>
+  </div>
+  <p class="note">The last one is new, and it belongs to a different vocabulary: a run is one of five states,
+     a <em>suite</em> is <code>complete</code> / <code>incomplete</code> / <code>failed</code>. Amber, never green.</p>
+
+  <h3 class="sub">Form controls</h3>
+  <div class="specimen">
+    <div class="spec"><span class="cap">default</span>
+      <label class="field"><span class="lab">Epochs</span><input class="inp" value="100"><span class="hint">How many passes over the dataset.</span></label></div>
+    <div class="spec"><span class="cap">focus</span>
+      <label class="field"><span class="lab">Epochs</span><input class="inp is-focus" value="100"><span class="hint">Focus is always visible — never removed.</span></label></div>
+    <div class="spec"><span class="cap">error</span>
+      <label class="field"><span class="lab">Epochs</span><input class="inp is-error" value="-4"><span class="err">Must be a positive integer.</span></label></div>
+    <div class="spec"><span class="cap">derived</span>
+      <label class="field"><span class="lab">Input shape <span class="tag">derived</span></span><input class="inp" value="640 × 640 × 3" readonly><span class="hint">From the run's imgsz. Shown, never editable.</span></label></div>
+  </div>
+
+  <h3 class="sub">Table, callouts, empty state</h3>
+  <div class="panel" style="margin-bottom:var(--s-md)"><div class="scrollx"><table class="dt">
+    <thead><tr><th>Version</th><th>Status</th><th class="num">Counted</th><th class="num">GT</th></tr></thead>
+    <tbody>
+      <tr><td><code>v1.4.2</code></td><td><span class="pill pill-succeeded">succeeded</span></td><td class="num">378</td><td class="num">380</td></tr>
+      <tr><td><code>v1.4.1</code></td><td><span class="pill pill-succeeded">succeeded</span></td><td class="num">360</td><td class="num">380</td></tr>
+    </tbody></table></div></div>
+  <div class="stack" style="align-items:stretch;margin-bottom:var(--s-md)">
+    <div class="callout callout-info" style="flex:1 1 260px">Waiting for Colab to start streaming…</div>
+    <div class="callout callout-warn" style="flex:1 1 260px">Calibrating on the training split — proof-grade, not production.</div>
+  </div>
+  <div class="empty"><div class="t">No live runs.</div><div class="h">Switch to Train → New to create one.</div></div>
+
+  <h3 class="sub">Modal and toast</h3>
+  <div class="stack" style="align-items:flex-start">
+    <div class="modalmock">
+      <h4>Delete version?</h4>
+      <p>This removes <code>v1.4.1</code> from R2 and the registry. Deployments referencing it will fail to resolve.</p>
+      <div class="acts"><button class="btn btn-secondary">Cancel</button><button class="btn btn-danger">Delete</button></div>
+    </div>
+    <div class="toast"><div class="t">Version created</div><div class="d">v1.4.2 · artifacts uploaded</div></div>
+  </div>
+</section>
+
+<section id="states">
+  <div class="sech"><span class="num">05</span><h2>Every state, side by side</h2></div>
+  <p class="lede">Including the ones that get skipped. Hover and focus are shown as static specimens because a
+     reader cannot hover everything at once — but they are real states, not illustrations.</p>
+  <div class="specimen">
+    <div class="spec"><span class="cap">default</span><button class="btn btn-primary">Run suite</button></div>
+    <div class="spec"><span class="cap">hover</span><button class="btn btn-primary is-hover">Run suite</button></div>
+    <div class="spec"><span class="cap">focus-visible</span><button class="btn btn-primary is-focus">Run suite</button></div>
+    <div class="spec"><span class="cap">active</span><button class="btn btn-primary is-active">Run suite</button></div>
+    <div class="spec"><span class="cap">disabled</span><button class="btn btn-primary is-disabled" disabled>Run suite</button></div>
+    <div class="spec"><span class="cap">blocked — carries the count</span><button class="btn btn-primary is-disabled" disabled>Fix 2 blocking issues</button></div>
+    <div class="spec"><span class="cap">loading</span><div class="track"><div class="fill" style="width:42%"></div></div><span class="hint">measured · 42%</span></div>
+    <div class="spec"><span class="cap">loading — estimated</span><div class="track"><div class="fill est" style="width:78%"></div></div><span class="hint">estimate, caps at 95%</span></div>
+    <div class="spec"><span class="cap">empty</span><div class="empty" style="padding:18px"><div class="t" style="font-size:14px">No evaluations yet.</div><div class="h">Run this version against a clip set.</div></div></div>
+    <div class="spec"><span class="cap">partial</span><span class="pill pill-partial">12/14 clips</span></div>
+    <div class="spec"><span class="cap">refused</span><div class="callout callout-danger">⛔ single_cls collapses every class into one.</div></div>
+    <div class="spec"><span class="cap">error</span><div class="callout callout-danger">Encoder failed: libx264 not available.</div></div>
+  </div>
+</section>
+
+<section id="refusal">
+  <div class="sech"><span class="num">06</span><h2>Refusal &amp; locked states</h2></div>
+  <p class="lede">A control that cannot be used is disabled and says why, naming the mechanism.
+     There is no <em>proceed anyway</em> — a caution the operator can click past is a defect with a disclaimer.</p>
+
+  <h3 class="sub">Refusal versus warning — the distinction must survive a glance</h3>
+  <div class="stack" style="align-items:stretch">
+    <div class="callout callout-danger" style="flex:1 1 320px">
+      <strong>⛔ single_cls</strong> collapses every class into one. The downstream contract is two classes —
+      the labelmap, the on-chip NMS config and the edge runtime — so this run would train, export, compile,
+      deploy, and be wrong.
+    </div>
+    <div class="callout callout-warn" style="flex:1 1 320px">
+      <strong>⚠ optimization_level 2</strong> with fewer than 1024 calibration images is allowed, and it is
+      how a previous HEF collapsed. Raise calib_n or accept the risk knowingly.
+    </div>
+  </div>
+
+  <h3 class="sub">A refused parameter, in the form</h3>
+  <div class="panel"><div class="body">
+    <label class="field"><span class="lab">Compile seed <span class="tag">refused</span></span>
+      <input class="inp" value="not sent — no consumer" readonly>
+      <span class="hint">The DFC ClientRunner recipe takes no seed, so a value here would fix nothing while
+        implying a reproducibility the compile cannot give.</span></label>
+    <label class="field"><span class="lab">Input conversion <span class="tag">refused</span></span>
+      <input class="inp" value="not sent — no consumer" readonly>
+      <span class="hint">Nothing applies it. The compile's model script sets normalization only, so a conversion
+        chosen here would be dropped in silence — and a silent RGB/BGR mismatch degrades every score without
+        ever raising an error.</span></label>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary is-disabled" disabled>Fix 2 blocking issues</button></div>
+  </div></div>
+  <p class="note">The reason sentence is authored once, next to the mechanism, and rendered verbatim.
+     A reason that drifts between screens is a reason nobody can act on.</p>
+
+  <h3 class="sub">Locked panel — an empty state with a cause</h3>
+  <div class="panel"><div class="body" style="background:var(--surface-soft);border-radius:var(--r-lg);
+       border:1px dashed var(--hairline)">
+    <div style="font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted)">Detector diagnostics locked</div>
+    <p style="font-size:13px;color:var(--body);margin-top:8px">The backend did not report per-class detections for this run.</p>
+    <p style="font-size:13px;color:var(--muted);margin-top:4px">Re-run with diagnostics enabled to populate this panel.</p>
+  </div></div>
+</section>
+
+<section id="prov">
+  <div class="sech"><span class="num">07</span><h2>Provenance</h2></div>
+  <p class="lede">Don't render a measured number without its source in the same visual block.
+     Which clip, which artifact — no click. A number whose source needs a click is a number somebody will
+     quote without it.</p>
+
+  <h3 class="sub">Source legend</h3>
+  <div class="stack" style="gap:var(--s-md);font-size:12px;color:var(--muted)">
+    <span class="stack" style="gap:6px"><i style="width:7px;height:7px;border-radius:var(--r-xs);background:var(--source-set);display:inline-block"></i> you set it</span>
+    <span class="stack" style="gap:6px"><i style="width:7px;height:7px;border-radius:var(--r-xs);background:var(--source-default);display:inline-block"></i> default — nobody typed this</span>
+    <span class="stack" style="gap:6px"><i style="width:7px;height:7px;border-radius:var(--r-xs);background:var(--source-derived);display:inline-block"></i> derived</span>
+  </div>
+
+  <h3 class="sub">kpi-card-sourced — mandatory in the Lab; a bare KPI card is not permitted</h3>
+  <div class="specimen">
+    <div class="spec">
+      <div style="font:600 28px/1 var(--mono);letter-spacing:-.3px;color:var(--ink)">378<span style="color:var(--muted-soft)"> / 380</span></div>
+      <div style="font:500 12px/1.4 var(--sans);color:var(--muted);margin-top:6px">counted vs ground truth</div>
+      <div style="border-top:1px solid var(--hairline-soft);margin-top:var(--s-xs);padding-top:var(--s-xxs);
+                  display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:500 12px/1.4 var(--sans);color:var(--muted)">
+        <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.2 · pt</code>
+        <span style="color:var(--hairline)">·</span><span>onsite-c2-morning</span>
+        <span style="margin-left:auto"><span class="pill pill-succeeded" style="font-size:11px;padding:3px 8px">reportable</span></span>
+      </div>
+    </div>
+    <div class="spec">
+      <div style="font:600 28px/1 var(--mono);letter-spacing:-.3px;color:var(--ink)">341<span style="color:var(--muted-soft)"> / 380</span></div>
+      <div style="font:500 12px/1.4 var(--sans);color:var(--muted);margin-top:6px">counted vs ground truth</div>
+      <div style="border-top:1px solid var(--hairline-soft);margin-top:var(--s-xs);padding-top:var(--s-xxs);
+                  display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:500 12px/1.4 var(--sans);color:var(--muted)">
+        <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.2 · hef</code>
+        <span style="color:var(--hairline)">·</span><span>onsite-c2-morning</span>
+        <code style="font:500 12px/1.4 var(--mono);color:var(--muted)">f0–9000</code>
+        <span style="margin-left:auto"><span class="pill pill-partial" style="font-size:11px;padding:3px 8px">unverified</span></span>
+      </div>
+    </div>
+  </div>
+  <p class="note">Two numbers, same clip, different artifact — and the strip is the only reason a reader
+     will not put them side by side as if they were comparable. The frame range appears on the second card
+     because that run was partial; on a whole-clip run it is absent, so a frame range on screen always means
+     "not the whole clip".</p>
+</section>
+
+<section id="compare">
+  <div class="sech"><span class="num">08</span><h2>Comparison &amp; diff</h2></div>
+  <p class="lede">A diff is a table with a stance. It names both sides at the top and never renders a delta
+     without both absolute values.</p>
+  <div class="panel">
+    <header><h4>Baseline vs candidate</h4><span class="pill pill-succeeded">comparable</span></header>
+    <div class="body">
+      <div style="display:grid;gap:var(--s-xs)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span class="tag">baseline</span>
+          <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.1 · pt</code>
+          <span style="color:var(--hairline)">·</span><span>occlusion-suite · 14 clips</span></div>
+        <div style="border-top:1px solid var(--hairline-soft)"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span class="tag">candidate</span>
+          <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.2 · pt</code>
+          <span style="color:var(--hairline)">·</span><span>occlusion-suite · 14 clips</span></div>
+      </div>
+      <h3 class="sub" style="font-size:14px">Event-level differences <span class="tag">primary</span></h3>
+      <div class="scrollx"><table class="dt">
+        <thead><tr><th>Clip</th><th class="num">GT</th><th class="num">baseline</th><th class="num">candidate</th><th class="num">Δ</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>c2-occluded-01</td><td class="num">27</td><td class="num">24</td><td class="num">27</td><td class="num" style="color:var(--success)">+3</td><td><a href="#compare">3 frames</a></td></tr>
+          <tr><td>c2-stacked-02</td><td class="num">41</td><td class="num">39</td><td class="num">38</td><td class="num" style="color:var(--danger)">−1</td><td><a href="#compare">1 frame</a></td></tr>
+          <tr><td>c1-clean-01</td><td class="num">55</td><td class="num">55</td><td class="num">55</td><td class="num" style="color:var(--muted)">0</td><td><span style="color:var(--muted-soft)">—</span></td></tr>
+        </tbody></table></div>
+      <p class="note">Improvement is declared per metric, never inferred from the sign. Fewer missed is better;
+         more counted is better against an undercount and worse against an overcount.</p>
+    </div>
+  </div>
+</section>
+
+<section id="video">
+  <div class="sech"><span class="num">09</span><h2>Video surface &amp; overlays</h2></div>
+  <p class="lede">The one place dark is correct — a video well is a data-dense panel, not a theme.
+     Overlay colours are a fourth family: a red zone means <em>excluded</em>, never <em>failed</em>.</p>
+  <div class="panel"><div class="body">
+    <div style="position:relative;aspect-ratio:16/9;background:var(--surface-dark);border-radius:var(--r-lg);overflow:hidden">
+      <div style="position:absolute;inset:0;background:
+           radial-gradient(circle at 30% 60%, var(--surface-dark-elevated), var(--surface-dark) 60%)"></div>
+      <svg viewBox="0 0 640 360" style="position:absolute;inset:0;width:100%;height:100%" aria-label="mock video overlay">
+        <line x1="300" y1="30" x2="292" y2="330" stroke="var(--overlay-line)" stroke-width="3"/>
+        <circle cx="300" cy="30" r="6" fill="var(--overlay-line)"/><circle cx="292" cy="330" r="6" fill="var(--overlay-line)"/>
+        <polygon points="440,90 600,90 600,210 440,210" fill="var(--overlay-zone)" fill-opacity=".2" stroke="var(--overlay-zone)" stroke-width="3"/>
+        <polyline points="70,250 140,220 190,255" fill="none" stroke="var(--overlay-draft)" stroke-width="3" stroke-dasharray="6 5"/>
+        <circle cx="70" cy="250" r="4" fill="var(--overlay-draft)"/><circle cx="140" cy="220" r="4" fill="var(--overlay-draft)"/>
+      </svg>
+    </div>
+    <div class="stack" style="margin-top:var(--s-sm);font-size:12px;color:var(--muted)">
+      <span class="stack" style="gap:6px"><i style="width:14px;height:3px;background:var(--overlay-line);display:inline-block"></i> count line</span>
+      <span class="stack" style="gap:6px"><i style="width:14px;height:10px;background:var(--overlay-zone);opacity:.35;border:1px solid var(--overlay-zone);display:inline-block"></i> exclusion zone</span>
+      <span class="stack" style="gap:6px"><i style="width:14px;height:3px;background:var(--overlay-draft);display:inline-block"></i> uncommitted draft</span>
+    </div>
+    <div class="callout callout-warn" style="margin-top:var(--s-sm)">Click inside the rendered video area, not the letterbox bars.</div>
+    <p class="note">That message is the refusal pattern applied to a canvas — the example proving it generalises
+       past forms. Geometry is pixel-space, anchored to frame 0, and the anchor is stated on screen because
+       geometry with no anchor silently stops being true when the camera moves.</p>
+  </div></div>
+</section>
+
+<section id="jobs">
+  <div class="sech"><span class="num">10</span><h2>Long-running jobs</h2></div>
+  <p class="lede">A percentage is a number, so it shows where it came from. A bar that cannot know its own
+     total must not draw itself like one that can, and must never reach 100% by guessing.</p>
+  <div class="specimen">
+    <div class="spec"><span class="cap">measured</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 14px/1.4 var(--sans);color:var(--ink)">Decoding</span><span style="font:600 16px/1 var(--mono)">42%</span></div>
+      <div class="track" style="margin:8px 0"><div class="fill" style="width:42%"></div></div>
+      <div style="font:500 12px/1.4 var(--mono);color:var(--muted)">3 780 / 9 000 frames · 01:12 elapsed · 01:38 left</div></div>
+    <div class="spec"><span class="cap">estimated — caps at 95%</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 14px/1.4 var(--sans);color:var(--ink)">Compiling</span><span style="font:600 16px/1 var(--mono)">78%</span></div>
+      <div class="track" style="margin:8px 0"><div class="fill est" style="width:78%"></div></div>
+      <div style="font:500 12px/1.4 var(--mono);color:var(--muted)">estimate only · elapsed 06:41</div></div>
+    <div class="spec"><span class="cap">failed — the server's own message</span>
+      <div class="callout callout-danger">DFC refused to quantize: NegativeSlopeExponentNonFixable</div>
+      <div style="margin-top:10px"><button class="btn btn-secondary">Retry</button></div></div>
+  </div>
+</section>
+
+<section id="partial">
+  <div class="sech"><span class="num">11</span><h2>Partial results</h2></div>
+  <p class="lede">The only genuinely net-new component here, and the one with the strongest rule behind it:
+     <strong>an incomplete suite must never be able to look like a clean one.</strong></p>
+  <div class="specimen">
+    <div class="spec"><span class="cap">pill</span><span class="pill pill-partial">partial</span></div>
+    <div class="spec"><span class="cap">segmented bar</span>
+      <div class="track" style="display:flex"><i style="width:64%;background:var(--success)"></i><i style="width:14%;background:var(--danger)"></i><i style="flex:1;background:var(--hairline)"></i></div>
+      <div style="font:500 12px/1.4 var(--mono);color:var(--muted);margin-top:8px">9 ok · 2 failed · 3 pending</div></div>
+    <div class="spec"><span class="cap">row — never a dash, never a zero</span>
+      <div style="font-size:13px">c2-night-04 &nbsp; <span class="pill pill-failed" style="font-size:11px;padding:3px 8px">failed</span></div>
+      <div class="hint">decode error at frame 812 — a clip that counted nothing and a clip that failed to decode must not render the same way.</div></div>
+  </div>
+</section>
+
+<section id="scenes">
+  <div class="sech"><span class="num">12</span><h2>Three composed scenes</h2></div>
+  <p class="lede">Components in isolation hide integration problems. These three exist to prove the rules
+     survive a real screen.</p>
+
+  <h3 class="sub">A — a complete suite</h3>
+  <div class="panel">
+    <header><h4>occlusion-suite · v1.4.2</h4><span class="pill pill-succeeded">complete</span></header>
+    <div class="body">
+      <div style="display:flex;gap:var(--s-xl);flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1 1 220px">
+          <div style="font:600 28px/1 var(--mono);letter-spacing:-.3px;color:var(--ink)">378<span style="color:var(--muted-soft)"> / 380</span></div>
+          <div style="font:500 12px/1.4 var(--sans);color:var(--muted);margin-top:6px">total counted vs total expected</div>
+          <div style="border-top:1px solid var(--hairline-soft);margin-top:var(--s-xs);padding-top:var(--s-xxs);
+                      display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:500 12px/1.4 var(--sans);color:var(--muted)">
+            <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.2 · pt</code>
+            <span style="color:var(--hairline)">·</span><span>occlusion-suite · 14 clips</span>
+            <span style="margin-left:auto"><span class="pill pill-succeeded" style="font-size:11px;padding:3px 8px">reportable</span></span>
+          </div>
+        </div>
+        <div style="flex:1 1 220px">
+          <div style="font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">per-clip accuracy</div>
+          <div style="display:flex;gap:3px;align-items:flex-end;height:56px">
+            <i style="flex:1;height:96%;background:var(--success);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+            <i style="flex:1;height:100%;background:var(--success);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+            <i style="flex:1;height:88%;background:var(--success);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+            <i style="flex:1;height:70%;background:var(--warning);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+            <i style="flex:1;height:99%;background:var(--success);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+            <i style="flex:1;height:93%;background:var(--success);border-radius:var(--r-xs) var(--r-xs) 0 0"></i>
+          </div>
+          <div class="hint">so a suite that is right on aggregate while wrong on both tails cannot hide</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sub">B — the same suite, incomplete. There is no aggregate number anywhere on this card.</h3>
+  <div class="panel" style="border-color:var(--warning)">
+    <header><h4>occlusion-suite · v1.4.2</h4><span class="pill pill-partial">incomplete</span></header>
+    <div class="body">
+      <div style="font:600 28px/1 var(--mono);letter-spacing:-.3px;color:var(--ink)">12<span style="color:var(--muted-soft)">/14</span>
+        <span style="font:400 16px/1 var(--sans);color:var(--muted)"> clips · 2 failed</span></div>
+      <div style="font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--warning);margin-top:10px">
+        Incomplete — 2 clips failed, 0 pending. No aggregate is shown.</div>
+      <div class="track" style="display:flex;margin:var(--s-sm) 0"><i style="width:85.7%;background:var(--success)"></i><i style="flex:1;background:var(--danger)"></i></div>
+      <div class="scrollx"><table class="dt">
+        <thead><tr><th>Clip</th><th class="num">GT</th><th class="num">counted</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>c2-occluded-01</td><td class="num">27</td><td class="num">27</td><td><span class="pill pill-succeeded">ok</span></td></tr>
+          <tr><td>c2-night-04</td><td class="num">31</td><td class="num" style="color:var(--muted-soft)">—</td><td><span class="pill pill-failed">decode error at frame 812</span></td></tr>
+          <tr><td>c1-rain-02</td><td class="num">19</td><td class="num" style="color:var(--muted-soft)">—</td><td><span class="pill pill-failed">short read: 4 100 of 7 300 frames</span></td></tr>
+        </tbody></table></div>
+      <p class="note">A percentage would invite rounding to "86% done ≈ done". A fraction does not.
+         Rendering a partial aggregate is not a smaller truth; it is a different and false one.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">C — a comparison that refuses</h3>
+  <div class="panel" style="border-color:var(--danger)">
+    <header><h4>Baseline vs candidate</h4><span class="pill pill-failed">refused</span></header>
+    <div class="body">
+      <div class="callout callout-danger" style="margin-bottom:var(--s-md)">
+        <strong>⛔ Different artifact kinds.</strong> Baseline was measured on <code>pt</code> and the candidate on
+        <code>hef</code>. INT8 quantization moves the number on its own, so a delta between these two would
+        attribute the compiler's effect to the model. Measure both sides on the same artifact kind.
+      </div>
+      <div style="display:grid;gap:var(--s-xs);opacity:1">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span class="tag">baseline</span>
+          <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.1 · pt</code>
+          <span style="color:var(--hairline)">·</span><span>occlusion-suite</span></div>
+        <div style="border-top:1px solid var(--hairline-soft)"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span class="tag">candidate</span>
+          <code style="font:500 12px/1.4 var(--mono);background:var(--surface-card);padding:2px 6px;border-radius:var(--r-xs)">v1.4.2 · hef</code>
+          <span style="color:var(--hairline)">·</span><span>occlusion-suite</span></div>
+      </div>
+      <div class="empty" style="margin-top:var(--s-md)">
+        <div class="t">The diff is not rendered.</div>
+        <div class="h">A refusal is not a result with a warning on top. Re-measure the candidate as <code>pt</code>, or the baseline as <code>hef</code>.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="border-bottom:0">
+  <p class="note" style="max-width:74ch">This page is the reference, not the app. The sections it renders are
+     documented in <code>DESIGN.md</code> before they are implemented, which is deliberate — but until a screen
+     consumes them, the document describes an intention on the surfaces it has not yet reached.</p>
+</section>
+
+</main>
+
+<script>
+const T = {
+  brand:["primary","primary-active","primary-hover","primary-soft","canvas","surface-soft","surface-card","surface-card-strong","surface-dark","surface-dark-elevated","accent-sky","accent-cyan"],
+  text:["ink","body-strong","body","muted","muted-soft","hairline","hairline-soft","on-primary","on-dark","on-dark-soft"],
+  sem:["success","success-soft","warning","warning-soft","danger","danger-soft","info","info-soft"],
+  status:["status-pending","status-running","status-succeeded","status-failed","status-cancelled","status-partial"],
+  source:["source-set","source-default","source-derived"],
+  overlay:["overlay-line","overlay-zone","overlay-draft"],
+};
+const cs = getComputedStyle(document.documentElement);
+for (const [id, names] of Object.entries({ "sw-brand":T.brand,"sw-text":T.text,"sw-sem":T.sem,
+    "sw-status":T.status,"sw-source":T.source,"sw-overlay":T.overlay })) {
+  const host = document.getElementById(id);
+  for (const n of names) {
+    const val = cs.getPropertyValue("--" + n).trim();
+    const el = document.createElement("div");
+    el.className = "sw";
+    el.innerHTML = '<div class="chip" style="background:var(--' + n + ');' +
+      (n.includes("canvas")||n.includes("hairline")||n.includes("soft")||n.includes("on-primary")
+        ? "box-shadow:inset 0 0 0 1px var(--hairline)" : "") + '"></div>' +
+      '<div class="meta"><div class="nm">' + n + '</div><div class="hx">' + val + '</div></div>';
+    host.appendChild(el);
+  }
+}
+const TYPE = [
+  ["display-xl","48 / 700",'font:700 48px/1.1 var(--sans);letter-spacing:-1.2px'],
+  ["display-lg","36 / 700",'font:700 36px/1.15 var(--sans);letter-spacing:-.8px'],
+  ["display-md","28 / 600",'font:600 28px/1.2 var(--sans);letter-spacing:-.5px'],
+  ["display-sm","22 / 600",'font:600 22px/1.25 var(--sans);letter-spacing:-.2px'],
+  ["title-lg","18 / 600",'font:600 18px/1.35 var(--sans)'],
+  ["title-md","16 / 600",'font:600 16px/1.4 var(--sans)'],
+  ["title-sm","14 / 600",'font:600 14px/1.4 var(--sans)'],
+  ["body-md","14 / 400",'font:400 14px/1.55 var(--sans)'],
+  ["body-sm","13 / 400",'font:400 13px/1.5 var(--sans)'],
+  ["caption","12 / 500",'font:500 12px/1.4 var(--sans)'],
+  ["caption-uppercase","11 / 600 · 1.2px",'font:600 11px/1.4 var(--sans);letter-spacing:1.2px;text-transform:uppercase'],
+  ["micro-uppercase","11 / 600 · 0.8px · mono",'font:600 11px/1.4 var(--mono);letter-spacing:.8px;text-transform:uppercase'],
+  ["metric-numeral","28 / 600 · mono",'font:600 28px/1 var(--mono);letter-spacing:-.3px'],
+  ["metric-numeral-sm","16 / 600 · mono",'font:600 16px/1 var(--mono);letter-spacing:-.2px'],
+  ["code","13 / 400 · mono",'font:400 13px/1.55 var(--mono)'],
+  ["code-inline","12 / 500 · mono",'font:500 12px/1.4 var(--mono)'],
+];
+const ts = document.getElementById("typescale");
+for (const [name, spec, css] of TYPE) {
+  const r = document.createElement("div"); r.className = "row";
+  r.innerHTML = '<div class="k">' + name + '<br><span style="color:var(--muted-soft)">' + spec + '</span></div>' +
+                '<div style="' + css + ';color:var(--ink)">Counted 378 of 380 — the pattern holds</div>';
+  ts.appendChild(r);
+}
+const SP = [["xxs",4],["xs",8],["sm",12],["md",16],["lg",20],["xl",28],["xxl",40],["section",56]];
+const sp = document.getElementById("spacing");
+for (const [n,v] of SP) {
+  const u = document.createElement("div"); u.className = "u";
+  u.innerHTML = '<div class="bar" style="width:' + v + 'px"></div><div class="lbl">' + n + '<br>' + v + '</div>';
+  sp.appendChild(u);
+}
+const RA = [["xs",3],["sm",4],["md",6],["lg",8],["xl",12],["xxl",16],["pill",9999]];
+const ra = document.getElementById("radii");
+for (const [n,v] of RA) {
+  const b = document.createElement("div"); b.className = "b";
+  b.style.borderRadius = (v > 100 ? 9999 : v) + "px"; b.textContent = n;
+  ra.appendChild(b);
+}
+</script>
+</body>
+</html>
