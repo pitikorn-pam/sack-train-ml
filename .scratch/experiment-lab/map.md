@@ -147,6 +147,19 @@ What that changes:
   Automation B (a config matrix) and C (fire on training finish) were checked against the schema
   and fit with one nullable column each — both deferred, because multiplying or automating numbers
   nobody trusts yet is how this map's opening finding happened.
+- [Where does the shared counting engine live, and how is it packaged?](./issues/05-where-the-shared-engine-lives.md) —
+  `sack-detector-edge` keeps ownership; the counting core becomes an installable package inside
+  it and `sack-train-ml` depends on it **by pinned git ref**, which is also what
+  `evaluations.engine_version` records. Grounded in an investigation that *executed* the whole
+  stack off-device (Python 3.14.5, numpy 2.4.5, no Hailo / picamera2 / MQTT / SQLite) and got a
+  real crossing count — so the lift is demonstrated, not argued. The backend interface already
+  exists and is implemented three times; `UltralyticsBackend` is a working `.pt` backend already
+  in the edge repo that nothing imports. Three changes needed: inject config instead of importing
+  `settings`, extract the confirm/flag/drop verdict out of `run_detection`, add scipy/lap/opencv.
+  **Correction it forced: `cv-replay` is NOT deploy-truth on the confirm/flag split** — it
+  hand-rolls passthrough while the fleet gates through `CrossingScorer` with vetoes. And the
+  Lab's "Match threshold" slider is not merely mis-united but **inert**: `max(25, 50*(1-0.70))`
+  discards the term entirely, so any result tuned on it was tuning nothing.
 
 ## Not yet specified
 
