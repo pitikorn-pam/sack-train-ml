@@ -8,7 +8,8 @@
  *
  *   deno test supabase/functions/download-artifact/key_test.ts
  */
-import { assert } from "https://deno.land/std@0.190.0/assert/mod.ts";
+// Same source and pin as _shared/compat_test.ts — one assert library, one version.
+import { assert } from "jsr:@std/assert@1.0.14";
 import { ARTIFACT_EXTENSIONS } from "../_shared/artifacts.ts";
 
 const KEY_RE =

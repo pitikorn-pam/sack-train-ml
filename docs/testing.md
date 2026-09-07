@@ -9,7 +9,7 @@ Run them from the repository root unless a command says otherwise.
 | 2 | Parameter contract (server-side validator) | `node contracts/verify-contract.mjs` | `11 checks, all passing`, exit 0 |
 | 3 | Web type gate + production build | `cd apps/web && npm run build` | exit 0, `1817 modules transformed` |
 | 4 | Web unit + component | `cd apps/web && npm test` | `3 passed (3)` files, `25 passed (25)` tests |
-| 5 | Edge functions (Deno) | `deno test supabase/functions/_shared/` | `7 passed \| 0 failed` |
+| 5 | Edge functions (Deno) | `deno test --allow-read --allow-env --no-check supabase/functions/` | `20 passed \| 0 failed` |
 
 All five must pass before anything is merged.
 Suite 3 is a test in its own right, not just a build: `tsc -b` type-checks every file under `apps/web/src`, and the `.test.ts`/`.test.tsx` files live there, so a test file that stops compiling breaks the build.
@@ -93,10 +93,17 @@ The three suites present are deliberately one of each kind, so that all three pa
 ## 5. Edge functions
 
 ```bash
-deno test supabase/functions/_shared/
+deno test --allow-read --allow-env --no-check supabase/functions/
 ```
 
-Expected: `ok | 7 passed | 0 failed`.
+Expected: `ok | 20 passed | 0 failed`.
+
+The flags are load-bearing. `--allow-read` lets `download-artifact/key_test.ts` read
+`contracts/param-schema.json`, which is the point of that test — it holds the download
+allow-list to the same artifact-kind list every other consumer reads. `--no-check`
+skips type-checking the function bodies, which import Deno-only remote modules that a
+test run does not need to resolve. Scope it to `supabase/functions/` rather than the
+repo root, or Deno will try to walk `node_modules`.
 
 Deno is the runtime Supabase edge functions actually run on.
 If it is not installed, either `brew install deno` or run it without installing:
@@ -136,3 +143,12 @@ The full inventory is in `.scratch/experiment-lab/v1.0.0-acceptance.md`.
 - **No linting anywhere.** `ruff` and `mypy` are declared in `pyproject.toml` but no command runs them, and the web app has no eslint config.
 - **No CI.** There is no `.github/workflows`, so nothing runs the five commands above automatically.
 - **Migrations are never applied from scratch** in any automated check.
+
+
+## A note on the assert library
+
+Both Deno suites import `jsr:@std/assert@1.0.14`, pinned. The older
+`https://deno.land/std@0.190.0/assert/mod.ts` path does **not exist** — that release ships
+`testing/asserts.ts` instead — so a test written against it fails at module resolution
+before a single assertion runs. If a new test file cannot resolve its imports, copy them
+from `_shared/compat_test.ts` rather than guessing a version.
