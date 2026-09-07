@@ -136,10 +136,14 @@ exist. Those are the larger half of "all functions working, all testcase" and th
 **Step 2 is blocked on two questions the counting-stack investigation was asked and did not
 answer:**
 
-1. **Does `RegionManager`'s flagged ledger lift?** `line_counter.py:748-993` is
-   MQTT/journal-shaped device bookkeeping — `flag_event`, `flagged_id`, `session_id` — and the
-   lift plan carries `line_counter.py` verbatim without classifying it. A package that drags a
-   session ledger into the Lab has not separated the layers it claims to.
+1. ~~**Does `RegionManager`'s flagged ledger lift?**~~ **Resolved 2026-09-07: yes,
+   cleanly.** The vocabulary sounds like transport — `flag_event`, `flagged_id`,
+   `session_id` — but the module is transport-free: no MQTT, no SQLite, no journal, a
+   plain in-memory dict (`line_counter.py:481`), and `session_id` arrives as a parameter
+   from the glue layer (`detection_loop.py:1494`). What it holds is *review state*, which
+   the Lab needs too. Carry `line_counter.py` whole — see
+   [05](./05-where-the-shared-engine-lives.md).
+
 2. **What are the deployed knob values, read from a running container?** Every number in the
    inventory's knob table is a Mac checkout. The repo's own rule is that the container is the
    authority, and this project has already been burned by trusting a checkout instead. Whatever
