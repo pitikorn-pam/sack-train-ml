@@ -160,6 +160,37 @@ What that changes:
   hand-rolls passthrough while the fleet gates through `CrossingScorer` with vetoes. And the
   Lab's "Match threshold" slider is not merely mis-united but **inert**: `max(25, 50*(1-0.70))`
   discards the term entirely, so any result tuned on it was tuning nothing.
+- [What does the device's counting stack actually depend on?](./issues/01-lift-the-edge-counting-stack.md) —
+  **it lifts behind a backend interface that already exists**, demonstrated by executing the whole
+  stack off-device rather than by reading it. Five unasked findings, three of which change the
+  build. Corrected after adversarial verification: the cv-replay section's line numbers were all
+  wrong, three claims contradicted their own sources, and two asked-for answers were never
+  delivered and are now blockers on the lift.
+- [The design system](./issues/04-design-system.md) — `DESIGN.md` already exists and is good, and
+  four of the five "missing" components already ship inside `Lab.tsx` in a private visual
+  vocabulary. Only **PARTIAL** is net-new. The decision: keep the Lab's density and its
+  behaviours, retire its parallel palette. Six sections get added; four implementation blockers
+  become their own work.
+- [The portable `.hef` runner](./issues/07-portable-hef-runner.md) — a worker that **claims** rows
+  from the queue [06](./issues/06-what-is-a-suite-run.md) already created, hardcoding no device.
+  It never holds an admin credential: two narrow edge functions hold the key server-side. It
+  downloads the artifact from R2 and **refuses to run if the digest does not match
+  `artifact_sha256`** — never the device's own deployed `.hef`. It refuses to start where a
+  detector container is already running, which keeps production devices safe without hardcoding
+  a device list. Short reads fail the row rather than producing a number.
+- [Lab as the umbrella](./issues/08-lab-as-umbrella-ia.md) — the product **is** the Lab; the tabs
+  are instruments. The spine is the **model version**, because the comparison people actually make
+  is candidate-vs-deployed and those usually belong to different experiments. `Lab.tsx` **splits**
+  into Replay (the interactive instrument) and Suites (the durable results surface) — it is 596
+  lines because it was doing both, which is why the results half was never persisted. A version
+  that has never been evaluated must read "never measured", not an em dash.
+- [Where does the Lab run, and what about the `cv-*` skills?](./issues/09-where-the-lab-runs.md) —
+  hybrid, and it was decided by the other tickets rather than chosen: the record and the UI move
+  to Supabase and the deployed web app, while `lab_server.py` stops being "the Lab backend" and
+  becomes "the Mac worker". The CLI skills stay and both paths write one `evaluations` table,
+  which is what finally gives a harvested frame a `run_id` to hang on. The provenance gate gets
+  three layers and one authority — the CHECK constraint, because it is the layer that cannot be
+  forgotten. **Ends with the build order, which is where this map ends.**
 
 ## Not yet specified
 
@@ -167,9 +198,10 @@ What that changes:
   migrate into `evaluations`, get discarded, or stay readable in a frozen view?
 - **Does a verdict gate promotion?** Whether an evaluation is required before a version can
   reach `channel_deployments`, or stays advisory.
-- **Closing the harvest loop.** `cv-missfind` → `cv-harvest` → `cv-upload` producing
-  `data_assets` rows that name the evaluation they came from. Deliberately deferred until
-  the evaluation record exists.
+- **Closing the harvest loop.** Partly graduated: [09](./issues/09-where-the-lab-runs.md) settled
+  that `cv-*` runs write `evaluations` rows carrying `run_id`. What remains unspecified is the
+  reverse link — a harvested frame naming the evaluation it came from, and a dataset naming which
+  harvests fed it.
 - **Automation B and C** — the shape of a config matrix, and what "fires when training
   finishes" means for cost and for trust in the resulting numbers.
 - **Auth and multi-user** once the Lab stops being one person's laptop.
