@@ -48,13 +48,17 @@ test-web:
 	cd apps/web && npm test
 
 test-edge:
-	@command -v deno >/dev/null || { \
+	@# One shell, one decision. Each recipe LINE is its own shell, so an `exit 0` in a
+	@# guard line ends that line successfully and the next one runs anyway — which is
+	@# exactly what the first version of this did.
+	@if command -v deno >/dev/null 2>&1; then \
+	  deno test --allow-read --allow-env --no-check supabase/functions/; \
+	else \
 	  echo "SKIPPED: deno is not installed, so the edge-function suite did not run."; \
 	  echo "  install: curl -fsSL https://deno.land/install.sh | sh"; \
 	  echo "  (25 tests — the auth boundary, the artifact allow-list, and the compat"; \
 	  echo "   signature's parity with Postgres. Not optional before a release.)"; \
-	  exit 0; }
-	deno test --allow-read --allow-env --no-check supabase/functions/
+	fi
 
 build:
 	cd apps/web && npm run build
