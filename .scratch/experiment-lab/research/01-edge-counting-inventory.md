@@ -337,3 +337,90 @@ Listed separately because I could not evidence them from a file I opened.
 - **Whether the deployed devices' `tuning.yaml` matches this checkout.** Everything in §4's right-hand columns is this git worktree resolved on this Mac. Per `verify-deployed-config-from-device`, the device is the authority and must be read via `docker inspect` / `docker exec`, or from the boot lines emitted by `settings.log_config_sources` (settings.py:111-129).
 - **Whether `lap` has wheels for Python 3.10-3.14 on macOS arm64.** It imported successfully in `EDGEROOT/.venv` on 3.14.5, so at least one working install exists on this machine — but I did not check how it got there or whether `pip install lap` reproduces it.
 - **`shapely`, `psutil`, `requests`, `av`, `paho-mqtt` being glue-only.** I traced the counting core's imports and none of these appear; I did not exhaustively grep the whole `src/` tree for them.
+
+---
+
+# Verification pass — corrections (2026-09-07)
+
+An adversarial reviewer opened ~45 of this document's citations and independently
+reproduced §7a's off-device run (`events 1 regions in/out [(1, 0)]`, edge `.venv`,
+Python 3.14.5 / numpy 2.4.5 / cv2 4.13.0 / scipy 1.18.0). **Verdict:
+usable-with-caveats.** The edge-repo half is well-evidenced and every citation checked
+there was correct at the stated line, so the *"lifts behind a backend interface"*
+verdict stands on evidence. What follows is what did not survive.
+
+## §3 was written from memory, not from the file — every line number in it is wrong
+
+`SKILL/cv-replay/cv_replay.py` is **296 lines, not 250**, and has not changed since
+2026-08-31. Corrected:
+
+| Claimed | Actual |
+|---|---|
+| imports `:35-38` | `:31-34` |
+| `HailoBackend(...)` `:113` | `:104` |
+| `ByteTrackWrapper(...)` `:114` | `:105` |
+| `RegionManager(None, W, H)` `:116` | `:107` |
+| `if ev.confidence >= CONF` `:190` | **`:199`** |
+| argparse `:40-96` | `:36-84` |
+| by-hand revert `:196-201` | `:212-218` (the decrement itself at `:215`) |
+| `in_count` unreliability comment `:224-231` | `:263-268` |
+| `from track_healer import TrackHealer` `:22` | `:23` (`:22` is `import trails as T`) |
+
+**The substance survives; the citations did not.** The load-bearing claim — cv-replay
+hand-rolls passthrough while the fleet gates through `CrossingScorer` — is true of the
+code. Quote it from `:199`.
+
+Also missed in §3: the file's one genuine stub, the fail-closed provenance-gate import
+at `cv_replay.py:19-28` (`_HAVE_GATE`, `T = None`, `TrackHealer = None`).
+
+## Four claims that contradict their own sources
+
+1. **`publish_detection_count` is not called only from `detection_loop`.** It is also
+   imported at `sack_detector.py:37` and called at `sack_detector.py:761`.
+2. **`crossing_scorer.from_settings()` does not lazily import settings — the meaning was
+   inverted.** `crossing_scorer.py:351` is
+   `def from_settings(cls, settings, contributor_fns=None, veto_fns=None)`: settings is a
+   **parameter injected by the caller**, and the body only `getattr`s it. The module
+   docstring says "imported lazily *by the caller*".
+3. **"Nothing consumes the backends polymorphically" contradicts the citation two lines
+   above it.** `run_detection(args, context, backend, camera_service)`
+   (`detection_loop.py:667`) takes the backend as a parameter and documents the contract at
+   `:669-672` — it *is* written polymorphically and is only ever handed one implementation.
+   The defect is in `_create_backend` (`sack_detector.py:2461-2468`), not in the consumer.
+4. **The settings-read enumeration is incomplete.** `line_counter.py` also reads
+   `settings.REVERSE_DIRECTION_WARNING_WINDOW_S` and `_MIN_EVENTS` at `:346-347`. So
+   "three changes required, and only three" rests on a list that was not exhaustive — the
+   shape of the lift is unchanged, the count is not.
+
+## The Lab environment was never opened, and it changes the dependency conclusion
+
+`sack-train-ml/.venv` runs **Python 3.14.5 with scipy 1.17.1, lap 0.5.13,
+opencv-python 4.10.0, numpy 2.4.6 — and ultralytics 8.4.56.** Verified directly.
+
+Two consequences:
+
+- **§5's "add scipy, lap, opencv-python" is wrong as stated.** They are already installed,
+  transitively. What is true, and still worth doing, is that `pyproject.toml` **declares**
+  none of them (it names `ultralytics==8.4.138` and nothing else in that family), so the
+  counting package would be relying on a transitive dependency — which is how an
+  environment breaks silently later. The action is *declare*, not *install*.
+- **The installed ultralytics is not the pinned one.** `check_toolchain_pin()` returns
+  `ultralytics 8.4.56 installed, contract pins 8.4.138`. `tests/test_contract.py:65-71`
+  deliberately downgrades this to a `warnings.warn` and explains itself honestly — a green
+  tick should not imply more than it earned. So this is not a bug in the test. It is a
+  **v1.0.0 acceptance gap**: `check_against_ultralytics()` currently proves the schema
+  matches 8.4.56, and the pin exists precisely because the Muon defect lived in exactly one
+  upstream release. A release gate must require the pinned version present.
+
+## Two asked-for answers are missing
+
+- **Deployed knob values, read from a running container.** The ticket named this as the
+  authority and warned the repo has been burned by trusting a checkout. §4's values are
+  this Mac's worktree only. The `edge-device-ssh` / `docker inspect` route was available
+  and not taken. Everything in §4 is therefore a claim about the deployment, not proof of it.
+- **Whether the flagged-item ledger lifts.** `RegionManager`'s flagged ledger
+  (`line_counter.py:748-993`) is placed inside the CORE and carried verbatim in §6's
+  package listing, but it is MQTT/journal-shaped device bookkeeping (`flag_event`,
+  `flagged_id`, `session_id`). It is classified nowhere in §2 and addressed nowhere in the
+  lift plan. **Open question, and it is on the critical path** — a package that drags a
+  session/MQTT ledger into the Lab has not actually separated the layers.

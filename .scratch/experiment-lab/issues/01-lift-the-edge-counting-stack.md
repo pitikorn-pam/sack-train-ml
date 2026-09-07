@@ -66,7 +66,7 @@ dependencies. Packaging and ownership are decided in
    the edge repo implementing the exact contract, and **nothing imports it** —
    `_create_backend` hardcodes Hailo (`sack_detector.py:2461`).
 2. **`cv-replay` is not deploy-truth on the confirm/flag split**, despite its `SKILL.md`
-   claiming to be. It hand-rolls passthrough (`cv_replay.py:190`) while the fleet runs
+   claiming to be. It hand-rolls passthrough (`cv_replay.py:199`) while the fleet runs
    `scorer.passthrough: false` with hard vetoes.
 3. **`TRACKER_TYPE` is inert on the deployed path.** `docker-compose.yml:44` sets it and
    `settings.py:275` reads it, but only `BoxmotTracker` consumes it, and the compose command
@@ -83,3 +83,29 @@ dependencies. Packaging and ownership are decided in
 Items 3 and 4 are dead controls in the deployed device, not in the Lab. They are outside this
 map's destination, so they are recorded here and belong to whoever owns the edge repo — flagged,
 not fixed.
+
+### Verified, and corrected, 2026-09-07
+
+An independent reviewer opened ~45 citations and reproduced the off-device run
+(`events 1 regions in/out [(1, 0)]`). The verdict holds. Corrections are recorded in full
+at the end of [the inventory](../research/01-edge-counting-inventory.md); the load-bearing
+ones:
+
+- **Every line number in the cv-replay section was wrong** — the file is 296 lines, not
+  250. The passthrough citation is `:199`, not `:190`, and is corrected above. The claims
+  are true of the code; that section was written from memory rather than from the file.
+- `publish_detection_count` is also called at `sack_detector.py:761`, so it is not purely
+  loop-glue.
+- `crossing_scorer.from_settings()` takes `settings` as an injected **parameter**
+  (`crossing_scorer.py:351`) — the inventory inverted its meaning.
+- The backends **are** consumed polymorphically: `run_detection` takes the backend as an
+  argument and documents the contract (`detection_loop.py:667-672`). The defect is only in
+  `_create_backend`.
+- Five settings-read call sites, not four (`line_counter.py:346-347` was missed).
+- The Lab venv already ships scipy, lap and opencv transitively; what is missing is their
+  **declaration** in `pyproject.toml`.
+
+**Two asked-for answers were not delivered and remain open**: deployed knob values read
+from a running container (the ticket named the container as the authority), and whether
+`RegionManager`'s flagged ledger (`line_counter.py:748-993`) — MQTT/journal-shaped device
+bookkeeping — belongs in the lifted core at all. The second is on the critical path.

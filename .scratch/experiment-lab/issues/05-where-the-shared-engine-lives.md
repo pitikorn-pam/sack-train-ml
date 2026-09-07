@@ -103,8 +103,10 @@ counting/
 backends/protocol.py   # the three-member contract above
 ```
 
-1. **Inject config instead of importing `settings`.** Four call sites, all late-bound
-   already: `line_counter.py:196-199, :315, :323` and `roi_config.py:113-114`.
+1. **Inject config instead of importing `settings`.** Five call sites, all late-bound
+   already: `line_counter.py:196-199, :315, :323, :346-347` and `roi_config.py:113-114`.
+   (An earlier draft said four and missed `REVERSE_DIRECTION_WARNING_WINDOW_S` / `_MIN_EVENTS`
+   at `:346-347`; the shape of the change is unaltered, the count was wrong.)
    `ByteTrackWrapper` needs nothing — it already takes its knobs as constructor arguments
    (`tracker.py:173-182`). `settings.py` itself must **not** cross: it reads `.env`, calls
    `gethostname()` and creates directories at import time (`settings.py:15-31, :144`).
@@ -116,7 +118,10 @@ backends/protocol.py   # the three-member contract above
    and the revert-on-flag. This is the change that actually matters, because without it the
    two sides still make the split differently. See the correction below.
 
-3. **Add `scipy`, `lap`, `opencv-python` to the Lab's dependency set.** The edge repo's
+3. **Declare `scipy`, `lap`, `opencv-python` in `pyproject.toml`.** They are already
+   *installed* in the Lab venv transitively (scipy 1.17.1, lap 0.5.13, opencv 4.10.0 —
+   verified directly), so this is not an install step. It is a declaration step, and it
+   matters because relying on a transitive dependency is how an environment breaks silently. The edge repo's
    `numpy<2.0.0` pin does **not** come from the counting stack — it ran fine on numpy 2.4.5 —
    so it does not travel with the package. What actually requires that pin is still unknown
    and is on the unverified list; do not drop it on the device on this evidence.
@@ -124,7 +129,7 @@ backends/protocol.py   # the three-member contract above
 ### A correction this ticket forces, and it is not small
 
 **`cv-replay` is not deploy-truth on the confirm/flag split, despite its own `SKILL.md`
-saying so.** It hand-rolls passthrough — `ev.confidence >= CONF` at `cv_replay.py:190` —
+saying so.** It hand-rolls passthrough — `ev.confidence >= CONF` at `cv_replay.py:199` —
 while the fleet runs `scorer.passthrough: false` (`tuning.yaml:85`) and gates every crossing
 through `CrossingScorer` with hard vetoes (`detection_loop.py:1936-1985`). Its confirmed
 count and the device's can differ on identical footage for that reason alone, with no frame
@@ -186,3 +191,46 @@ Three tests, and the package does not ship without them:
    transiently wrong on every flagged crossing. `pipeline.py` must emit an **undecided**
    event and let the caller decide, and the test must pin that behaviour — an increment a
    second consumer can observe mid-flight is exactly how a wrong number gets published.
+
+---
+
+## Corrections after adversarial verification (2026-09-07)
+
+The inventory this answer rests on was reviewed by an independent agent that opened ~45 of
+its citations and re-ran its off-device execution. The verdict — *lifts behind a backend
+interface* — held. Four things in the supporting detail did not, and are fixed above or
+recorded here:
+
+- **Every line number in the inventory's cv-replay section was wrong** (it is a 296-line
+  file, not 250). The `ev.confidence >= CONF` citation is corrected above to `:199`. The
+  claim itself is true of the code; only the coordinates were written from memory.
+- **The settings-read enumeration was incomplete** — five call sites, not four.
+- **The dependency action is *declare*, not *install*.**
+- **"Nothing consumes the backends polymorphically" was wrong.**
+  `run_detection(args, context, backend, camera_service)` (`detection_loop.py:667`) takes
+  the backend as a parameter and documents the contract at `:669-672`; it is written
+  polymorphically and is only ever handed one implementation. The defect is confined to
+  `_create_backend` (`sack_detector.py:2461-2468`) — which makes connecting
+  `UltralyticsBackend` a smaller change than this ticket first implied, not a larger one.
+
+**Two open items this answer inherits and does not close:**
+
+1. **The flagged-item ledger.** `RegionManager`'s flagged ledger
+   (`line_counter.py:748-993`) is MQTT/journal-shaped device bookkeeping — `flag_event`,
+   `flagged_id`, `session_id` — and the lift plan carries `line_counter.py` verbatim without
+   classifying it. A package that drags a session/MQTT ledger into the Lab has not separated
+   the layers. **This is on the critical path of the lift** and must be settled before the
+   package is cut.
+2. **Deployed knob values were never read from a running container.** Everything in the
+   inventory's knob table is this Mac's checkout. The repo's own rule
+   (`verify-deployed-config-from-device`) is that the running container is the authority,
+   and this project has already been burned by trusting a checkout instead. Any config the
+   shared package ships as "the deployed default" is unverified until read via
+   `docker inspect` / `docker exec` on a device.
+
+**One finding that becomes an acceptance gate rather than a code fix.** The Lab venv runs
+`ultralytics 8.4.56` while the contract pins `8.4.138`. `tests/test_contract.py:65-71`
+deliberately downgrades that to a warning and says why, honestly — a green tick must not
+imply more than it earned. The consequence stands regardless: `check_against_ultralytics()`
+today proves the schema matches **8.4.56**, and the pin exists precisely because the Muon
+defect lived in exactly one upstream release. v1.0.0 must require the pinned version present.
