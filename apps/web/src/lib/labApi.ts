@@ -62,18 +62,24 @@ export type ScorerFeatures = Record<string, ScorerValue>;
 export type ScoreBreakdown = Record<string, ScorerValue>;
 export type ScorerVerdict = "confirmed" | "flagged" | "rejected" | "excluded" | string;
 
+/**
+ * What the backend actually puts on an event.
+ *
+ * This type used to require `run_id`, `detector_frame`, `crossing_frame` and a
+ * `tracker` OBJECT — a description of a contract nobody implemented. Because it
+ * describes runtime JSON, it cost nothing at build time and every one of those reads
+ * returned undefined. `tracker` is a plain string naming the tracker; the identifiers
+ * live on the manifest, not the event.
+ */
 export type EventProvenance = {
-  run_id: string;
+  run_id?: string;
   source_video_sha256?: string;
   model_sha256?: string;
   config_hash?: string;
-  detector_frame: number;
-  crossing_frame: number;
-  tracker: {
-    tracker_type: string;
-    track_id: number | string | null;
-    track_age_frames?: number;
-  };
+  detector_frame?: number;
+  crossing_frame?: number;
+  /** The tracker's name, e.g. "centroid". Not an object. */
+  tracker?: string;
   decision: {
     conf_split?: number;
     raw_conf?: number;
@@ -83,10 +89,11 @@ export type EventProvenance = {
     recovered: boolean;
     reason?: string;
   };
-  geometry: {
-    line: CountingLine;
+  /** The line the crossing was decided against, and the point that crossed it. */
+  geometry?: {
+    line: CountingLine | null;
     centroid: Point;
-    zone_id?: string;
+    zone_id?: string | null;
   };
   /** Present only when the backend produced an auditable path slice. */
   path?: PathProvenance;

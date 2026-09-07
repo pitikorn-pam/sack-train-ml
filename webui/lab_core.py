@@ -264,6 +264,7 @@ def score_crossing(event: dict, *, mode: str = "passthrough", conf_split: float 
 
 def derive_crossing_event(previous_side, current_side, inflip, frame_index, timestamp_ms,
                           track_id, detection, exclusion_zone, conf_split, sequence,
+                          line=None,
                           path: TrackPath | None = None, predictor: str = "quadratic",
                           scorer_mode: str = "passthrough", scorer_config: dict | None = None,
                           scorer_features: dict | None = None):
@@ -302,6 +303,14 @@ def derive_crossing_event(previous_side, current_side, inflip, frame_index, time
             "confidence": float(detection["confidence"]),
             "exclusion_zone_id": exclusion_zone.get("zone_id") if exclusion_zone else None,
             "tracker": "centroid", "conf_split": float(conf_split),
+            # The line the crossing was decided against, alongside the point that
+            # crossed it. Without this the Crossing Inspector's GEOMETRY block could
+            # only ever print "line —": it was reading a key nothing wrote.
+            "geometry": {
+                "line": [int(v) for v in line] if line is not None else None,
+                "centroid": [float(detection["centroid"][0]), float(detection["centroid"][1])],
+                "zone_id": exclusion_zone.get("zone_id") if exclusion_zone else None,
+            },
             "decision": {
                 "raw_conf": float(detection["confidence"]),
                 # False by construction, not by measurement: a crossing suppressed by
@@ -440,6 +449,7 @@ class CentroidTracker:
             zone = next((z for z in (exclusion_zones or []) if z["enabled"] and point_in_polygon(detection["centroid"], z["points"])), None)
             event = derive_crossing_event(previous_side, current_side, inflip, frame_index,
                                           timestamp_ms, tid, detection, zone, conf_split, self._sequence + 1,
+                                          line=line,
                                           path=path, predictor=self.predictor,
                                           scorer_mode=self.scorer_mode, scorer_config=self.scorer_config)
             cooldown_ok = old is None or frame_index - old.get("last_event_frame", -10**9) >= self.cooldown_frames

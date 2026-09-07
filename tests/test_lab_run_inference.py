@@ -189,3 +189,18 @@ def test_encoder_failure_raises_encoding_error_and_still_removes_the_intermediat
     leftovers = sorted(scratch_tmpdir.glob("*.mp4"))
     assert len(leftovers) == 1
     assert leftovers[0].stat().st_size == 0
+
+
+def test_every_event_carries_the_geometry_it_was_decided_against(replay):
+    """The Crossing Inspector's GEOMETRY block could only ever print "line —": the
+    TypeScript type required a `geometry` object and nothing wrote one. It is written
+    now, and it must carry the line, not just the centroid — the centroid alone cannot
+    tell a reviewer which line the crossing was judged against."""
+    result = replay()
+    assert result.events, "expected at least one crossing"
+    for event in result.events:
+        geometry = event["provenance"]["geometry"]
+        assert geometry["line"] == list(LINE), "the event does not name the line it crossed"
+        assert len(geometry["centroid"]) == 2
+        assert geometry["centroid"] == event["centroid"]
+
