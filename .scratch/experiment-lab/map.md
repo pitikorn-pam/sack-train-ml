@@ -135,6 +135,18 @@ What that changes:
   `fps` and `frame_count` must come from a real `ffprobe -count_packets`, enforced by a constraint
   requiring the stored probe to contain `nb_read_packets`, because `duration × r_frame_rate` has
   already cost this project a wrong count. Trims point back at their source clip.
+- [What is a suite run, and what does it produce?](./issues/06-what-is-a-suite-run.md) — a stored
+  entity, not a filter, because it must be able to say "12 of 14 done, 1 failed" and survive a
+  closed laptop. Launching one writes N `evaluations` rows at `pending`; workers claim them, so
+  resumability and multi-machine execution fall out with no new infrastructure. The clip list is
+  **snapshotted at launch**, so editing a saved set later cannot rewrite history. An incomplete
+  suite renders **no aggregate number at all** — the display rule enforces the parent CLAUDE.md
+  line that an unclean finalization state is not a result. The headline is total counted vs total
+  expected (the business number) with the per-clip distribution beside it, and comparison refuses
+  to put two different `config_hash` or `artifact_kind` values side by side without saying so.
+  Automation B (a config matrix) and C (fire on training finish) were checked against the schema
+  and fit with one nullable column each — both deferred, because multiplying or automating numbers
+  nobody trusts yet is how this map's opening finding happened.
 
 ## Not yet specified
 
