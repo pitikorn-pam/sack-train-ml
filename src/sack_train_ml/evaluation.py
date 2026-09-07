@@ -84,6 +84,38 @@ def gate_check(
     )
 
 
+def gate_verdict_for_run(
+    fp32_eval: dict[str, Any] | None,
+    int8_eval: dict[str, Any] | None,
+    max_map_drop: float = 0.03,
+) -> dict[str, Any]:
+    """The verdict a run records, including when there is nothing to compare.
+
+    `metrics_summary.gate` used to be absent whenever an INT8 evaluation did not exist,
+    which is every run: the compile quantizes but nothing measures the quantized model.
+    An absent field reads as "not applicable"; a present one that says why reads as what
+    it is. The difference matters because a version that was never gated must not look
+    like one that passed, and this repo has already spent days on a HEF that reported
+    success and counted nothing.
+    """
+    # `state` is three-valued on purpose. "not-evaluated" is not a failure — a version
+    # nobody gated did not fail its gate — but it is emphatically not a pass either, and
+    # a two-valued flag forces the display to call it one of them. The UI reads this.
+    if not fp32_eval:
+        return {**GateVerdict(False, None, None, None,
+                              "no FP32 evaluation was recorded for this run").to_dict(),
+                "state": "not-evaluated"}
+    if not int8_eval:
+        fp_map = normalize_metrics(fp32_eval).get("map50")
+        return {**GateVerdict(
+            passed=False, fp32_map=fp_map, int8_map=None, delta=None,
+            reason=("INT8 not evaluated — the compile quantizes but does not measure the "
+                    "quantized model, so there is nothing to compare. NOT a pass."),
+        ).to_dict(), "state": "not-evaluated"}
+    verdict = gate_check(fp32_eval, int8_eval, max_map_drop=max_map_drop)
+    return {**verdict.to_dict(), "state": "pass" if verdict.passed else "fail"}
+
+
 def _load(src: dict[str, Any] | str | Path) -> dict[str, Any]:
     if isinstance(src, (str, Path)):
         return json.loads(Path(src).read_text())

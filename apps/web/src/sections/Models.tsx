@@ -351,9 +351,12 @@ function VersionDetailPanel({
             </div>
           </>
         )}
+        {/* Three states, not two. A version nobody gated did not fail its gate, and
+            rendering it as FAILED sends someone to investigate a regression that never
+            happened — while rendering it as PASSED is the far worse error. */}
         {gate && (
-          <p className={gate.passed ? "gate-pass" : "gate-fail"}>
-            Gate: {gate.passed ? "PASSED" : "FAILED"} — {gate.reason}
+          <p className={gate.state === "pass" ? "gate-pass" : gate.state === "not-evaluated" ? "gate-unknown" : "gate-fail"}>
+            Gate: {gate.state === "pass" ? "PASSED" : gate.state === "not-evaluated" ? "NOT GATED" : "FAILED"} — {gate.reason}
           </p>
         )}
       </section>

@@ -127,3 +127,43 @@ def test_a_custom_threshold_is_honoured():
     strict = gate_check({"map50": 0.90}, {"map50": 0.88}, max_map_drop=0.01)
     lenient = gate_check({"map50": 0.90}, {"map50": 0.88}, max_map_drop=0.10)
     assert strict.passed is False and lenient.passed is True
+
+
+# ---------------------------------------------------------------------------
+# gate_verdict_for_run — what a run records, including when it cannot decide
+# ---------------------------------------------------------------------------
+
+def test_the_gate_is_recorded_even_when_there_is_nothing_to_compare():
+    """`metrics_summary.gate` used to be absent on every run, because no step measures
+    the quantized model. An absent field reads as "not applicable"; a present one that
+    says why reads as what it is."""
+    from sack_train_ml.evaluation import gate_verdict_for_run
+
+    v = gate_verdict_for_run({"metrics/mAP50(B)": 0.91}, None)
+    assert v["passed"] is False, "a version that was never gated must not look like one that passed"
+    assert v["fp32_map"] == pytest.approx(0.91)
+    assert v["int8_map"] is None
+    assert "INT8 not evaluated" in v["reason"]
+    assert "NOT a pass" in v["reason"]
+
+
+def test_a_run_with_no_fp32_evaluation_says_so_rather_than_being_silent():
+    from sack_train_ml.evaluation import gate_verdict_for_run
+
+    v = gate_verdict_for_run(None, None)
+    assert v["passed"] is False
+    assert "no FP32 evaluation" in v["reason"]
+
+
+def test_when_both_exist_it_is_the_real_gate():
+    from sack_train_ml.evaluation import gate_verdict_for_run
+
+    assert gate_verdict_for_run({"map50": 0.91}, {"map50": 0.90})["passed"] is True
+    assert gate_verdict_for_run({"map50": 0.91}, {"map50": 0.50})["passed"] is False
+
+
+def test_the_verdict_is_always_json_serialisable_for_the_version_row():
+    from sack_train_ml.evaluation import gate_verdict_for_run
+
+    for args in [(None, None), ({"map50": 0.9}, None), ({"map50": 0.9}, {"map50": 0.9})]:
+        json.dumps(gate_verdict_for_run(*args))

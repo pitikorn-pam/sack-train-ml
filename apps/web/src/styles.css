@@ -1409,3 +1409,8 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
 .lab-derived, .lab-derived-inert { display:block; margin-top:4px; font-size:11px; line-height:1.4; }
 .lab-derived { color: var(--muted, #8291a6); }
 .lab-derived-inert { color: #ffc44d; }
+
+/* A gate that could not be reached is neither a pass nor a failure. Amber, matching
+   the design system's `partial` status: it must not read as green, and it must not
+   send anyone to investigate a regression that never happened. */
+.gate-unknown { color: #b45309; }

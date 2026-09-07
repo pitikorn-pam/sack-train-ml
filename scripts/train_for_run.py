@@ -47,7 +47,7 @@ if str(SRC_ROOT) not in sys.path:
 from sack_train_ml import contract
 from sack_train_ml.contracts import ArtifactRecord, ReleaseManifest, sha256_file
 from sack_train_ml.dataset import validate_dataset
-from sack_train_ml.evaluation import normalize_metrics
+from sack_train_ml.evaluation import gate_verdict_for_run, normalize_metrics
 from sack_train_ml.export_onnx import export_onnx
 from sack_train_ml.release import assemble_bundle, build_manifest
 from sack_train_ml.supabase_client import RegistryClient
@@ -130,6 +130,10 @@ def main(argv: list[str] | None = None) -> int:
 
         # 4. Eval FP32
         fp32_eval = _eval_fp32(model)
+        # Nothing measures the quantized model yet: `diagnostics` is refused in the
+        # schema because no step compares before and after. Declared here rather than
+        # left implicit so the day it exists there is one place to fill in.
+        int8_eval: dict[str, Any] | None = None
         client.log_step(run_id, 4, "eval-fp32", "ok",
                         f"FP32 mAP50={fp32_eval.get('map50'):.4f}" if "map50" in fp32_eval else "FP32 eval done")
 
@@ -185,6 +189,13 @@ def main(argv: list[str] | None = None) -> int:
             uploaded=uploads,
             metrics_summary={
                 "fp32": normalize_metrics(fp32_eval) if fp32_eval else {},
+                # Present even when empty. An absent int8 block reads as "not
+                # applicable"; an empty one reads as "not measured", which is the truth.
+                "int8": normalize_metrics(int8_eval) if int8_eval else {},
+                # And the verdict is always recorded, including when it cannot be
+                # reached — a version that was never gated must not look like one that
+                # passed. gate_check itself had no caller at all until now.
+                "gate": gate_verdict_for_run(fp32_eval, int8_eval),
             },
             class_names=config.classes,
             input_size=config.input_size,
@@ -197,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
             bundle_dir=bundle_dir,
             artifacts={"pytorch": best_pt, "onnx": onnx_path},
             eval_fp32=fp32_eval or None,
-            eval_int8=None,
+            eval_int8=int8_eval,
             manifest=manifest,
         )
 
