@@ -148,6 +148,9 @@ export type EventRecord = {
 export type LabSummary = {
   confirmed: number;
   flagged: number;
+  /** Crossings the scorer rejected in fused mode. Counted into `total`, so omitting it
+   *  from the display made the arithmetic on screen fail to close. */
+  dropped: number;
   recovered: number;
   excluded: number;
   /** Total emitted crossing events, including excluded events. */
@@ -291,6 +294,10 @@ export function compareRunManifests(baseline: RunManifest, current: RunManifest)
 export type RunHistoryResponse = {
   runs: RunManifest[];
   schema_version?: string;
+  /** False when the backend holds run history in process memory, so a restart loses it.
+   *  apps/api/lab_server.py says so honestly in the payload; the UI used to ignore it
+   *  and render "N SAVED", which is a promise the store does not make. */
+  persistent?: boolean;
 };
 
 export type LabConfig = {
@@ -344,6 +351,20 @@ export type DetectionDiagnostics = {
   sampled_frame_density: unknown[];
 };
 
+/**
+ * The Lab backend's inference result.
+ *
+ * NOT every field here is sent. Nine are declared and nothing produces them —
+ * `artifacts`, `capabilities`, `capability_details`, `paths`, `provenance`, `run`,
+ * `trail`, `trails`, `unsupported_capabilities`. Six of those are read by Lab.tsx and
+ * are always `undefined`, which renders as an empty or LOCKED panel rather than an
+ * error. TypeScript cannot see it: this type is a claim about JSON, not a check on it.
+ *
+ * `tests/test_lab_result_shape.py` is the check. It compares these keys against the
+ * Python dataclass the server serialises, holds the nine above as a documented ratchet,
+ * and fails on any new one. Removing an entry from that list after removing it from
+ * here is always correct.
+ */
 export type LabResult = {
   video_id: string;
   video_url: string;
@@ -355,8 +376,18 @@ export type LabResult = {
   flagged: number | null;
   recovered: number | null;
   per_crossing: unknown[];
-  /** Backend-owned detector diagnostics; absent means this backend cannot provide them. */
-  diagnostics?: DetectionDiagnostics;
+  /** Backend-owned detector diagnostics; absent means this backend cannot provide them.
+   *  The name must stay `detection_diagnostics`: it is the LabResult dataclass field
+   *  (webui/lab_core.py), the manifest key, and what tests/test_lab_api_contract.py
+   *  asserts. Calling it `diagnostics` here made a working, tested feature render as
+   *  "DETECTOR DIAGNOSTICS LOCKED" on every successful run — a runtime shape mismatch
+   *  TypeScript cannot catch. */
+  detection_diagnostics?: DetectionDiagnostics;
+  /** Frames per second the backend measured on the decoded video. This is the rate the
+   *  count was computed at; a <video> element cannot report one, which is why the HUD
+   *  read "fps —" until it started taking this value. */
+  fps?: number | null;
+  frame_count?: number | null;
   config: Record<string, unknown>;
   // v1 research-contract fields; optional to preserve v0 responses.
   video_width?: number;
