@@ -45,12 +45,10 @@ class RunConfig:
     hyperparameters: dict[str, Any] = field(default_factory=dict)
     export_options: dict[str, Any] = field(default_factory=dict)
     # When ``compile_hef`` is true the training run also compiles an INT8 .hef
-    # in the same Colab session (see hailo_pipeline). Keys:
-    #   compile_hef: bool          — enable the HEF compile phase
-    #   opt_level:   int (0|2)     — 0 = fast/basic (proven); 2 = production (calib>=1024)
-    #   calib_n:     int           — # calibration images sampled from the dataset
-    #   wheel_key:   str           — R2 key for the gated DFC wheel (tools/...)
-    #   scores_th / iou_th / max_per_class / reg_len — NMS contract overrides
+    # in the same Colab session (see hailo_pipeline). The keys are the schema's —
+    # ``contracts/param-schema.json``, form=compile category=field — plus the
+    # ``compile_hef`` switch itself; ``train_for_run.compile_kwargs`` refuses any
+    # other key rather than ignoring it.
     compile_options: dict[str, Any] = field(default_factory=dict)
     dataset_bundle: str | None = None
     dataset_stats: dict[str, Any] = field(default_factory=dict)

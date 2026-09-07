@@ -219,9 +219,10 @@ export function RunDetail({
           <dd>
             {compileOpts.compile_hef ? (
               <code>
-                on · quant L{compileOpts.opt_level ?? 0}
+                on · quant L{compileOpts.optimization_level ?? 0}
                 {` · calib ${compileOpts.calib_n ?? "—"}`}
-                {compileOpts.opt_level === 2 ? " (production)" : " (basic)"}
+                {/* the schema's enum is a string ("0" | "1" | "2"), so compare as a number */}
+                {Number(compileOpts.optimization_level) === 2 ? " (production)" : " (basic)"}
               </code>
             ) : (
               <span className="muted">off (ONNX only)</span>

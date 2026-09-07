@@ -147,10 +147,9 @@
       "label": "single_cls",
       "help": "Collapses every class into one. The whole downstream contract is two classes — the labelmap, the on-chip NMS config and the edge runtime — so a run with this set would train, export, compile, deploy, and be wrong." },
 
-    { "key": "calibration_set", "form": "compile", "category": "field", "type": "enum", "default": "onsite-2026-08-31",
-      "enum": ["onsite-2026-08-31", "train-split"],
+    { "key": "calibration_set", "form": "compile", "category": "refused",
       "label": "Calibration set",
-      "help": "The images INT8 quantization measures activations against, referenced by key so two compiles can be proven to have used the same ones. Training-split images prove the pipeline; real onsite frames are what production quantization needs." },
+      "help": "The compile calibrates on the images the run already holds — its dataset's val split, train as fallback. No curated onsite set is registered anywhere a Colab session can fetch by name, so choosing one here would name images the compile could not load. Register the onsite frames as a dataset first, then this becomes a field again." },
 
     { "key": "calib_n", "form": "compile", "category": "field", "type": "int", "default": 512, "min": 64, "max": 4096,
       "label": "Calibration images",
@@ -172,18 +171,21 @@
       "label": "Max detections per class",
       "help": "Sizes the output buffer, so it truncates rather than warns: a frame busier than this silently loses its tail." },
 
-    { "key": "input_conversion", "form": "compile", "category": "field", "type": "enum", "default": "none",
-      "enum": ["none", "bgr_to_rgb", "nv12_to_rgb", "yuy2_to_rgb"],
+    { "key": "input_conversion", "form": "compile", "category": "refused",
       "label": "Input conversion",
-      "help": "Makes the camera's real pixel format part of the compile contract. A silent RGB/BGR mismatch degrades every score without ever raising an error." },
+      "help": "Nothing applies it. The compile's model script sets normalization only (scripts/compile_clientrunner.py:225-228), so a conversion chosen here would be dropped in silence — and a silent RGB/BGR mismatch degrades every score without ever raising an error. It needs an input_conversion() line in that model script before it can be offered." },
 
-    { "key": "compile_seed", "form": "compile", "category": "field", "type": "int", "default": 0,
+    { "key": "compile_seed", "form": "compile", "category": "refused",
       "label": "Compile seed",
-      "help": "Fixes the compiler's random draw, so 'recompiling fixed it' becomes reproducible evidence instead of folklore." },
+      "help": "The DFC ClientRunner recipe takes no seed (scripts/compile_clientrunner.py), so a value here would fix nothing while implying a reproducibility the compile cannot give." },
 
-    { "key": "diagnostics", "form": "compile", "category": "field", "type": "enum", "default": "true", "enum": ["true", "false"],
+    { "key": "diagnostics", "form": "compile", "category": "refused",
       "label": "Run FP32-vs-INT8 check",
-      "help": "Compares the model before and after quantization in the same session. It costs compile time and is the only thing that catches a collapsed HEF before it reaches the device." },
+      "help": "Nothing in the run measures it. The compile parses, quantizes and compiles (scripts/compile_clientrunner.py); no step compares the model before and after quantization, so this switch would promise a check that never runs." },
+
+    { "key": "dfc_wheel", "form": "compile", "category": "derived", "derivedFrom": "the pinned Dataflow Compiler version",
+      "label": "Compiler wheel",
+      "help": "The gated DFC wheel the run installs, named from the pinned toolchain version rather than typed per run — so the compiler build and the recipe proven against it can never disagree. Typed per run, it was simply never sent, and every compile failed on its absence." },
 
     { "key": "input_shape", "form": "compile", "category": "derived", "derivedFrom": "the source run's imgsz",
       "label": "Input shape",

@@ -60,6 +60,22 @@ function Field({ p, value, onChange }: { p: Param; value: string; onChange: (v: 
   );
 }
 
+/** A control the contract refuses. Shown, disabled, with the reason — never silently
+ *  dropped: a compile knob that looks live and reaches no consumer is how four of
+ *  these came to do nothing at all. */
+function Refused({ p }: { p: Param }) {
+  return (
+    <label className="pv3-field">
+      <span className="pv3-label">
+        {p.label} <Hint text={p.help} />
+        <span className="pv3-tag derived">refused</span>
+      </span>
+      <input value="not sent — no consumer" readOnly disabled className="pv3-ro" />
+      <span className="pv3-hint">{p.help}</span>
+    </label>
+  );
+}
+
 function Derived({ p, value }: { p: Param; value: string }) {
   return (
     <label className="pv3-field">
@@ -158,6 +174,7 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
     regression_length: family === "yolo11" && task === "detect" ? "16" : "—",
     compiler_profile: capability.profile,
     compression_level: "0",
+    dfc_wheel: `Dataflow Compiler ${schema.toolchain.dfc} (pinned)`,
   };
 
   const advancedIssue = useMemo(() => {
@@ -203,6 +220,9 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
         classes,
         input_size: [Number(values.imgsz), Number(values.imgsz), 3],
         task: task === "detect" ? "detection" : task,
+        // Required by RunConfig and by the version's compat signature — a config
+        // without it fails to load before training starts.
+        output_kind: task === "segment" ? "segmentation-masks" : "detection-boxes",
         hyperparameters: {
           ...Object.fromEntries(paramsFor("train", "field").map((p) => [p.key, coerce(p, values[p.key])])),
           ...JSON.parse(advanced || "{}"),
@@ -436,7 +456,10 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
           </div>
 
           <button className="pv3-disclose" onClick={() => setShowAdvanced((s) => !s)}>
-            {showAdvanced ? "▾" : "▸"} Advanced parameters — validated against ultralytics before submit
+            {/* The browser has no ultralytics to validate against; it checks JSON validity
+                and the contract's refused keys, and ultralytics itself rejects an unknown
+                argument at train start. Say that, rather than promising a check nobody runs. */}
+            {showAdvanced ? "▾" : "▸"} Advanced parameters — JSON, checked against the contract's refused keys
           </button>
           {showAdvanced && (
             <>
@@ -466,6 +489,9 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
               ))}
               {paramsFor("compile", "derived").map((p) => (
                 <Derived key={p.key} p={p} value={derived[p.key] ?? "—"} />
+              ))}
+              {paramsFor("compile", "refused").map((p) => (
+                <Refused key={p.key} p={p} />
               ))}
             </div>
           )}

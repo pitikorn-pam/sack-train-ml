@@ -10,8 +10,9 @@ Reads a Supabase ``run_id``, pulls config, runs the pipeline:
     6. upload best.pt + best.onnx to R2
     6b. (optional) compile INT8 .hef + upload — when ``compile_options.compile_hef``
         is set. Runs in the same Colab session via a dedicated DFC virtualenv
-        subprocess (see sack_train_ml.hailo_pipeline). Failure-safe: if the
-        compile fails the .pt/.onnx artifacts are still published.
+        subprocess (see sack_train_ml.hailo_pipeline). If it fails, the .pt/.onnx
+        artifacts are still published — but the run finalises ``failed``, because a
+        compile that was requested and did not happen is not a success.
     7. create versions row (with whatever artifacts succeeded)
     8. finalize_run (succeeded | failed)
 
@@ -43,6 +44,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from sack_train_ml import contract
 from sack_train_ml.contracts import ArtifactRecord, ReleaseManifest, sha256_file
 from sack_train_ml.dataset import validate_dataset
 from sack_train_ml.evaluation import normalize_metrics
@@ -150,12 +152,13 @@ def main(argv: list[str] | None = None) -> int:
                         f"Uploaded {best_pt.name} + {onnx_path.name}")
 
         # 6b. Optional: compile INT8 .hef in-session (gated by compile_options).
-        # Failure-safe — a compile failure logs a warning but the .pt/.onnx
-        # artifacts above are still published into the version below.
+        # A failure does not stop the version being published — the .pt/.onnx above
+        # are real and worth keeping — but it is carried down to the finalize.
+        compile_error: str | None = None
         if args.skip_hef:
             client.log_step(run_id, 7, "compile", "info", "HEF compile skipped (--skip-hef)")
         else:
-            _maybe_compile_hef(
+            compile_error = _maybe_compile_hef(
                 config=config, client=client, run_id=run_id, semver=semver,
                 onnx_path=onnx_path, onnx_sha=u_onnx.content_hash,
                 dataset_yaml=dataset_yaml, save_dir=save_dir, git_sha=git_sha,
@@ -210,6 +213,17 @@ def main(argv: list[str] | None = None) -> int:
                         f"Version {version_row['semver']} created ({version_row['id']})")
 
         # 9. Finalize
+        #
+        # A compile that was requested and did not happen is not a success. The old
+        # code logged it as a `warn` inside config_yaml.logs[] and finalised
+        # `succeeded`, so a run that produced no .hef looked exactly like one that
+        # did — the operator learned about it only by opening the artifacts list.
+        # The version row above still carries whatever landed (nothing is thrown
+        # away); what changes is that the run stops claiming the .hef exists.
+        if compile_error:
+            client.finalize_run(run_id, status="failed",
+                                error=f"HEF compile was requested and failed: {compile_error}")
+            return 1
         client.finalize_run(run_id, status="succeeded")
         return 0
 
@@ -346,6 +360,40 @@ def _download_url(url: str, dest: Path) -> None:
             f.write(chunk)
 
 
+# The compile vocabulary belongs to the schema, not to this file. Every key on the
+# left is a `form: "compile", category: "field"` entry in contracts/param-schema.json —
+# the exact keys the New-run form sends — and tests/test_compile_contract.py asserts the
+# two sets are identical. A second vocabulary here is what made the compile unreachable
+# from the UI for every run the form ever created.
+_COMPILE_ARG: dict[str, tuple[str, Any]] = {
+    "calib_n": ("calib_n", int),
+    "optimization_level": ("opt_level", int),
+    "scores_th": ("scores_th", float),
+    "iou_th": ("iou_th", float),
+    "max_proposals_per_class": ("max_per_class", int),
+}
+
+
+def compile_kwargs(copts: dict[str, Any]) -> dict[str, Any]:
+    """Schema-named ``compile_options`` → ``compile_onnx_to_hef`` keyword arguments.
+
+    Defaults come from the schema as well, so a key the submitter left out resolves to
+    the value the form displayed rather than to a second copy of it here.
+
+    Unknown keys are refused rather than ignored: a key nobody reads is exactly the
+    failure this replaced, and it is invisible from the outside.
+    """
+    unknown = set(copts) - set(_COMPILE_ARG) - {"compile_hef"}
+    if unknown:
+        raise ValueError(
+            f"compile_options carries keys no consumer reads: {sorted(unknown)}. "
+            f"The compile vocabulary is contracts/param-schema.json "
+            f"(form=compile, category=field): {sorted(_COMPILE_ARG)}"
+        )
+    resolved = {**contract.defaults("compile"), **copts}
+    return {arg: cast(resolved[key]) for key, (arg, cast) in _COMPILE_ARG.items()}
+
+
 def _maybe_compile_hef(
     *,
     config: Any,
@@ -358,17 +406,18 @@ def _maybe_compile_hef(
     save_dir: Path,
     git_sha: str | None,
     uploads: dict[str, ArtifactRecord],
-) -> None:
+) -> str | None:
     """Optional in-flow HEF compile (step 6b). No-op unless ``compile_hef`` set.
 
-    Runs the DFC ClientRunner recipe inside a dedicated venv subprocess. On
-    success appends ``hef`` + ``hef_meta`` to ``uploads`` so they land in the
-    same version row. On any failure, logs a warning and returns — the .pt/.onnx
-    artifacts already in ``uploads`` are still published.
+    Runs the DFC ClientRunner recipe inside a dedicated venv subprocess. On success
+    appends ``hef`` + ``hef_meta`` to ``uploads`` so they land in the same version row
+    and returns ``None``. On failure it returns the reason: the .pt/.onnx artifacts
+    already in ``uploads`` are still published, but the caller finalises the run
+    ``failed`` rather than letting a missing .hef pass as a success.
     """
     copts = getattr(config, "compile_options", {}) or {}
     if not copts.get("compile_hef"):
-        return
+        return None
 
     try:
         from sack_train_ml.hailo_pipeline import (
@@ -379,50 +428,38 @@ def _maybe_compile_hef(
 
         client.log_step(run_id, 7, "compile", "started", "HEF compile (DFC ClientRunner) starting")
 
-        wheel_key = copts.get("wheel_key")
-        if not wheel_key:
-            raise ValueError("compile_options.wheel_key (R2 DFC wheel) is required when compile_hef=true")
+        kwargs = compile_kwargs(copts)
+
+        # The wheel is pinned by the toolchain, not chosen per run — see
+        # contract.dfc_wheel_key().
+        wheel_key = contract.dfc_wheel_key()
         wheel_local = REPO_ROOT / "tools" / Path(wheel_key).name
         if not wheel_local.exists():
             _download_url(client.download_tool(wheel_key), wheel_local)
             client.log_step(run_id, 7, "compile", "info", f"DFC wheel pulled · {wheel_local.name}")
-        venv_py = ensure_dfc_venv(wheel_local, copts.get("venv_dir", "/content/hailo_venv"))
+        venv_py = ensure_dfc_venv(wheel_local)
 
-        calib_n = int(copts.get("calib_n", 512))
-        # Default calib source is the training/val split (proof-grade — proves the
-        # pipeline, not production accuracy). A ``calib_dir`` override lets a run
-        # point at real curated edge/onsite frames instead, which is what
-        # optimization_level=2's extra bias-correction actually needs to calibrate
-        # against — see build_calib_dir()'s own docstring on this gap.
-        calib_override = copts.get("calib_dir")
-        if calib_override:
-            calib_dir = Path(calib_override).expanduser()
-            if not calib_dir.is_dir():
-                raise FileNotFoundError(f"compile_options.calib_dir not found: {calib_dir}")
-            client.log_step(run_id, 7, "compile", "info", f"calib source: override dir {calib_dir}")
-        else:
-            calib_dir = build_calib_dir(dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=calib_n)
+        # Calibration images come from the run's own dataset (val split, train
+        # fallback) — the only images a Colab session is guaranteed to hold. That is
+        # proof-grade rather than production-grade quantization; `calibration_set` is
+        # refused in the schema for exactly this reason.
+        calib_dir = build_calib_dir(
+            dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=kwargs["calib_n"],
+        )
 
-        size = _imgsz(config)
-        net_name = copts.get("net_name", "yolov11s_sack")
         art = compile_onnx_to_hef(
             onnx_path=onnx_path,
             calib_dir=calib_dir,
             out_dir=save_dir / "hef",
-            model_name=net_name,
+            model_name="yolov11s_sack",
             venv_python=venv_py,
             target=(config.export_options or {}).get("hailo_target", "hailo8l"),
-            input_size=size,
+            input_size=_imgsz(config),
             classes=len(config.classes),
-            calib_n=calib_n,
-            opt_level=int(copts.get("opt_level", 0)),
-            scores_th=float(copts.get("scores_th", 0.20)),
-            iou_th=float(copts.get("iou_th", 0.70)),
-            max_per_class=int(copts.get("max_per_class", 50)),
-            reg_len=int(copts.get("reg_len", 16)),
             source_onnx_sha=onnx_sha,
             git_sha=git_sha,
             extra_meta={"run_id": run_id, "semver": semver, "class_names": config.classes},
+            **kwargs,
         )
 
         u_hef = client.upload_artifact(art.hef_path, kind="hef", run_id=run_id, semver=semver,
@@ -431,15 +468,19 @@ def _maybe_compile_hef(
         u_meta = client.upload_artifact(art.hef_meta_path, kind="hef_meta", run_id=run_id, semver=semver)
         uploads["hef_meta"] = u_meta.to_record()
         client.log_step(run_id, 7, "compile", "ok",
-                        f"HEF compiled + uploaded · {art.hef_path.name} (opt_level={copts.get('opt_level', 0)})")
+                        f"HEF compiled + uploaded · {art.hef_path.name} "
+                        f"(optimization_level={kwargs['opt_level']})")
+        return None
     except Exception as exc:  # noqa: BLE001
         import traceback
         traceback.print_exc()
+        detail = f"{type(exc).__name__}: {exc}"
         try:
-            client.log_step(run_id, 7, "compile", "warn",
-                            f"HEF compile skipped/failed: {type(exc).__name__}: {exc} — .pt/.onnx still published")
+            client.log_step(run_id, 7, "compile", "error",
+                            f"HEF compile failed: {detail} — .pt/.onnx still published")
         except Exception:
             pass
+        return detail
 
 
 def _materialize_dataset(
@@ -631,17 +672,17 @@ def _find_best_pt(save_dir: Path) -> Path:
 
 
 def _eval_fp32(model: Any) -> dict[str, Any]:
+    """Harvest the val metrics under the names the rest of the pipeline uses.
+
+    Walking ``dir(res)`` for int/float attributes cannot see them: ``map50`` lives on
+    ``res.box``, and the canonical ``metrics/mAP50(B)`` names live in
+    ``res.results_dict`` — a dict, which the ``isinstance(v, (int, float))`` filter
+    skipped. The old harvest therefore returned ``{"fitness": …}`` and every version
+    card rendered mAP50 as an em dash.
+    """
     try:
         res = model.val()
-        # YOLO val returns a metrics object; coerce to dict
-        out: dict[str, Any] = {}
-        for k in dir(res):
-            if k.startswith("_"):
-                continue
-            v = getattr(res, k, None)
-            if isinstance(v, (int, float)):
-                out[k] = v
-        return out
+        return normalize_metrics(getattr(res, "results_dict", None) or {})
     except Exception:
         return {}
 

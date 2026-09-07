@@ -663,6 +663,9 @@ async def infer(
         in_path, model_path, input_sha256, model_metadata, cfg = await _prepare_inference(video, config, model)
         try:
             result = lab_core.run_inference(in_path, cfg)
+        except lab_core.EncodingError as exc:
+            # An encoder fault is ours, not the operator's config.
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"invalid config: {exc}") from exc
         return JSONResponse(_store_result(result, cfg=cfg, model_metadata=model_metadata,

@@ -44,6 +44,20 @@ def pinned_versions() -> dict[str, str]:
     return dict(schema()["toolchain"])
 
 
+def dfc_wheel_key() -> str:
+    """R2 key of the gated Dataflow Compiler wheel, named by the pinned DFC version.
+
+    The wheel is not an operator choice: the compile recipe is proven against one DFC
+    release, so the toolchain pin above is the only thing entitled to name it. It used
+    to arrive as `compile_options.wheel_key` typed into a form — which the form then
+    stopped sending, and every compile failed on its absence.
+    """
+    return (
+        "tools/hailo/hailo_dataflow_compiler-"
+        f"{pinned_versions()['dfc']}-py3-none-linux_x86_64.whl"
+    )
+
+
 class ContractError(RuntimeError):
     """The schema and the installed toolchain disagree."""
 
