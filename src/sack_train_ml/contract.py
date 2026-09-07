@@ -129,6 +129,31 @@ def _normalise(v: Any) -> Any:
     return v
 
 
+def check_run_hyperparameters(hyperparameters: dict[str, Any]) -> list[str]:
+    """Keys a *run* asks for that the installed ultralytics does not define.
+
+    The form's escape hatch accepts arbitrary JSON — that is what an escape hatch is
+    for — and the edge function validates only keys the schema declares, so a typo like
+    ``mosiac`` passes every gate and reaches ``model.train(**kwargs)`` unexamined.
+    ultralytics does raise on an unknown key, but only after the Colab session has
+    booted and the dataset has downloaded. Checking here fails in seconds.
+
+    This is the environment layer the contract assigns to Python (issue 04): only the
+    process holding the installed ultralytics can answer it, so only it should try.
+    """
+    from ultralytics.utils import DEFAULT_CFG_DICT
+    import ultralytics
+
+    # Contract-level concepts the trainer never sees.
+    OURS = {"classes"}
+    installed = getattr(ultralytics, "__version__", "unknown")
+    return [
+        f"{k}: not a parameter of the installed ultralytics {installed}"
+        for k in sorted(hyperparameters)
+        if k not in DEFAULT_CFG_DICT and k not in OURS
+    ]
+
+
 def check_toolchain_pin() -> list[str]:
     """The installed ultralytics must be the one the contract names."""
     import ultralytics

@@ -484,7 +484,7 @@ export function NewRunV3({
             {/* The browser has no ultralytics to validate against; it checks JSON validity
                 and the contract's refused keys, and ultralytics itself rejects an unknown
                 argument at train start. Say that, rather than promising a check nobody runs. */}
-            {showAdvanced ? "▾" : "▸"} Advanced parameters — JSON, checked against the contract's refused keys
+            {showAdvanced ? "▾" : "▸"} Advanced parameters — JSON, checked against the contract's refused keys here; names checked against the installed ultralytics when the run starts
           </button>
           {showAdvanced && (
             <>

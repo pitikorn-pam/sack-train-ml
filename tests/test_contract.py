@@ -72,3 +72,36 @@ def test_schema_agrees_with_installed_ultralytics():
             f"version — {pin_problems[0]}. Re-run after `pip install -e .` to check the pin.",
             stacklevel=1,
         )
+
+
+# ---------------------------------------------------------------------------
+# The escape hatch is the one surface no earlier layer can validate.
+# ---------------------------------------------------------------------------
+
+def test_known_hyperparameters_pass():
+    assert contract.check_run_hyperparameters({"epochs": 100, "lr0": 0.001, "mosaic": 0.7}) == []
+
+
+def test_our_own_keys_are_not_reported_as_unknown():
+    # `classes` is a contract-level concept the trainer never sees.
+    assert contract.check_run_hyperparameters({"classes": ["person", "sack"]}) == []
+
+
+def test_a_typo_is_caught_before_the_run_burns_a_session():
+    """`mosiac` passes the browser (valid JSON, not a refused key) and passes the edge
+    function (which validates only declared fields), then reaches model.train(**kwargs).
+    ultralytics does raise on it — after Colab has booted and the dataset has downloaded."""
+    problems = contract.check_run_hyperparameters({"mosiac": 0.7})
+    assert len(problems) == 1
+    assert "mosiac" in problems[0]
+
+
+def test_the_message_names_the_version_it_checked_against():
+    import ultralytics
+
+    problems = contract.check_run_hyperparameters({"definitely_not_a_key": 1})
+    assert ultralytics.__version__ in problems[0]
+
+
+def test_empty_hyperparameters_are_fine():
+    assert contract.check_run_hyperparameters({}) == []

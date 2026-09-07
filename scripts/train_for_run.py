@@ -87,6 +87,17 @@ def main(argv: list[str] | None = None) -> int:
         client.log_step(run_id, 1, "init", "error", f"toolchain check failed: {exc}")
         client.finalize_run(run_id, status="failed")
         raise
+    # The escape hatch accepts arbitrary JSON and no earlier layer can check it: the
+    # browser has no ultralytics and neither does the edge function. Catching a bad key
+    # here costs seconds; letting it through costs a booted session and a downloaded
+    # dataset, which is exactly what the Muon incident cost.
+    hp_problems = contract.check_run_hyperparameters(getattr(config, "hyperparameters", {}) or {})
+    if hp_problems:
+        detail = "; ".join(hp_problems)
+        client.log_step(run_id, 1, "init", "error", f"unknown hyperparameters: {detail}")
+        client.finalize_run(run_id, status="failed", error=f"unknown hyperparameters: {detail}")
+        return 1
+
     client.log_step(run_id, 1, "init", "info",
                     f"train_for_run starting · git={git_sha or 'unknown'} dry_run={args.dry_run}")
 

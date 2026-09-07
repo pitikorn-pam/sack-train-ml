@@ -33,7 +33,8 @@ const STEPS = [
   },
   {
     title: "Pickup the release bundle",
-    body: "On success, a new version row appears under Models with best.pt + best.onnx downloadable from R2. HEF compile is a separate manual step on a Hailo-equipped workstation.",
+    body:
+      "On success, a new version row appears under Models with best.pt + best.onnx downloadable from R2. If you left the HEF compile on, it runs in this same Colab session as step 6b and the .hef lands on the same version — it is not a separate manual step. A compile that was requested and failed finalises the run as failed, so a green run means the .hef is there.",
   },
 ];
 

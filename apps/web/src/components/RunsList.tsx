@@ -10,7 +10,7 @@ const STATUS_COLOR: Record<Run["status"], string> = {
   cancelled: "#6b7280",
 };
 
-/** Read a field out of a run's config_yaml (stored by NewRun). */
+/** Read a field out of a run's config_yaml, as the New-run form stored it. */
 function cfgField(run: Run, key: string): string | undefined {
   const v = (run.config_yaml as Record<string, unknown> | undefined)?.[key];
   return typeof v === "string" ? v : undefined;
@@ -69,7 +69,7 @@ export function RunsList({ onSelect, filter }: Props) {
             <th>Status</th>
             <th>Model</th>
             <th>Dataset</th>
-            <th>Note</th>
+            <th>Name</th>
             <th>Run ID</th>
             <th>Git SHA</th>
             <th>Started</th>
@@ -102,7 +102,9 @@ export function RunsList({ onSelect, filter }: Props) {
                 })()}
               </td>
               <td><code>{shortDataset(cfgField(r, "dataset"))}</code></td>
-              <td className="muted">{cfgField(r, "note") ?? "—"}</td>
+              {/* Was `note`, a key only the retired NewRun form ever wrote, so the column
+                  was structurally always empty. `run_name` is what the live form sends. */}
+              <td className="muted">{cfgField(r, "run_name") ?? "—"}</td>
               <td><code>{r.id.slice(0, 8)}</code></td>
               <td><code>{r.git_sha ?? "—"}</code></td>
               <td>{r.started_at ? formatDateTime(r.started_at) : "—"}</td>

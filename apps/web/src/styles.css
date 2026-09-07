@@ -1403,3 +1403,9 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
    substituting a default nobody chose. */
 .pv3-notrestored { margin: 6px 0 0; padding-left: 18px; }
 .pv3-notrestored li { margin-top: 2px; }
+
+/* A derived value the operator cannot edit, shown so a knob's real effect is visible
+   rather than inferred. The inert variant says the control is currently doing nothing. */
+.lab-derived, .lab-derived-inert { display:block; margin-top:4px; font-size:11px; line-height:1.4; }
+.lab-derived { color: var(--muted, #8291a6); }
+.lab-derived-inert { color: #ffc44d; }
