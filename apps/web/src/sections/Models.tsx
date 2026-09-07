@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, History } from "lucide-react";
 import { supabase, type ModelLine } from "../lib/supabase";
+import { mustWrite } from "../lib/writes";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
 import { formatDate, formatDateTime, formatBytes, formatRelative } from "../lib/format";
@@ -130,27 +131,36 @@ export function Models({ isAdmin }: { isAdmin: boolean }) {
         if (error) throw error;
         push({ tone: "success", title: "Deployed", detail: `v${version.semver} → ${channel}` });
       } else if (type === "set-default") {
-        // Clear current defaults on channel, set new default
-        await supabase
+        // Clearing the old default legitimately matches zero rows when there was no
+        // default yet, so it is the one write here that must NOT insist on a row.
+        const { error: clearErr } = await supabase
           .from("channel_deployments")
           .update({ is_default: false })
           .eq("model_line_id", version.model_line_id)
           .eq("channel_name", channel)
           .eq("status", "active");
-        const { error } = await supabase
-          .from("channel_deployments")
-          .update({ is_default: true })
-          .eq("model_line_id", version.model_line_id)
-          .eq("channel_name", channel)
-          .eq("version_id", version.id)
-          .eq("status", "active");
-        if (error) throw error;
-        // Also update channels.current_version_id
-        await supabase
-          .from("channels")
-          .update({ current_version_id: version.id })
-          .eq("model_line_id", version.model_line_id)
-          .eq("name", channel);
+        if (clearErr) throw clearErr;
+
+        await mustWrite(
+          supabase
+            .from("channel_deployments")
+            .update({ is_default: true })
+            .eq("model_line_id", version.model_line_id)
+            .eq("channel_name", channel)
+            .eq("version_id", version.id)
+            .eq("status", "active")
+            .select("id"),
+          "Setting the default deployment",
+        );
+        await mustWrite(
+          supabase
+            .from("channels")
+            .update({ current_version_id: version.id })
+            .eq("model_line_id", version.model_line_id)
+            .eq("name", channel)
+            .select("name"),
+          "Pointing the channel at this version",
+        );
         push({ tone: "success", title: "Set default", detail: `v${version.semver} is now default on ${channel}` });
       }
     } catch (e: any) {
@@ -304,7 +314,7 @@ function VersionDetailPanel({
   const fp32 = (version.metadata?.metrics_summary?.fp32 ?? {}) as Record<string, number>;
   const int8 = (version.metadata?.metrics_summary?.int8 ?? {}) as Record<string, number>;
   const gate = version.metadata?.metrics_summary?.gate as Record<string, any> | undefined;
-  const artifactKinds = ["pytorch", "onnx", "hef", "hef_meta"] as const;
+  const artifactKinds = ["pytorch", "onnx", "hef", "hef_meta", "effective_config"] as const;
 
   return (
     <div className="version-detail-inner">

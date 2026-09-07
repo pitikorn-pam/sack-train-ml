@@ -81,19 +81,51 @@ serve(async (req) => {
     .single();
   if (!version) return json({ error: "version_not_found" }, 404);
 
+  // The row is the only thing that names these keys. Deleting it after a failed R2
+  // delete strands the objects permanently — nothing can find them again to retry —
+  // while the UI reports "removed from R2 + DB". So a failure here stops the whole
+  // operation: the caller is told exactly which keys survived, and the version row
+  // stays, which is what makes a retry possible.
+  const failed: { key: string; reason: string }[] = [];
+  const removed: string[] = [];
   for (const k of Object.keys(ARTIFACT_EXTENSIONS)) {
     const a = artifactDetail(version.artifacts, k as ArtifactKind);
-    if (a.r2_key) {
-      try {
-        await deleteObject(a.r2_key);
-      } catch (e) {
-        console.warn("r2 delete failed", a.r2_key, e);
-      }
+    if (!a.r2_key) continue;
+    try {
+      await deleteObject(a.r2_key);
+      removed.push(a.r2_key);
+    } catch (e) {
+      failed.push({ key: a.r2_key, reason: String((e as Error)?.message ?? e) });
     }
   }
 
-  await sb.from("versions").delete().eq("id", body.version_id);
-  return json({ deleted: body.version_id });
+  if (failed.length > 0) {
+    return json({
+      error: "r2_delete_failed",
+      detail: "The version row was kept so this can be retried. Objects already removed are listed.",
+      failed,
+      removed,
+    }, 502);
+  }
+
+  const { data: gone, error: delErr } = await sb
+    .from("versions")
+    .delete()
+    .eq("id", body.version_id)
+    .select("id");
+  if (delErr) return json({ error: "version_delete_failed", detail: delErr.message, removed }, 500);
+  // RLS turns a forbidden delete into a zero-row match rather than an error, so an
+  // unchecked delete would report success for an action that did nothing — while the
+  // R2 objects above are already gone.
+  if (!gone || gone.length === 0) {
+    return json({
+      error: "version_delete_matched_no_rows",
+      detail: "R2 objects were removed but the registry row was not deleted. Check admin permissions.",
+      removed,
+    }, 409);
+  }
+
+  return json({ deleted: body.version_id, removed });
 });
 
 function json(body: unknown, status = 200): Response {

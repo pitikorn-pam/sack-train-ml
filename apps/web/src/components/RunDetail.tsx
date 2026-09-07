@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, XCircle, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { supabase, type Run, type RunMetric } from "../lib/supabase";
+import { mustWrite } from "../lib/writes";
 import { MetricChart } from "./MetricChart";
 import { ColabSteps } from "./ColabSteps";
 import { useToast } from "./Toast";
@@ -27,28 +28,39 @@ export function RunDetail({
 
   async function cancelRun() {
     setCancelOpen(false);
-    const { error } = await supabase
-      .from("runs")
-      .update({ status: "cancelled", finished_at: new Date().toISOString() })
-      .eq("id", runId);
-    if (error) push({ tone: "danger", title: "Cancel failed", detail: error.message });
-    else push({ tone: "info", title: "Run cancelled", detail: runId.slice(0, 8) });
+    try {
+      // `.select()` is what makes a forbidden write visible: RLS turns it into a
+      // zero-row match, not an error, so without asking what was touched this
+      // reports success for an action that did nothing.
+      await mustWrite(
+        supabase
+          .from("runs")
+          .update({ status: "cancelled", finished_at: new Date().toISOString() })
+          .eq("id", runId)
+          .select("id"),
+        "Cancelling this run",
+      );
+      push({ tone: "info", title: "Run cancelled", detail: runId.slice(0, 8) });
+    } catch (e: any) {
+      push({ tone: "danger", title: "Cancel failed", detail: String(e?.message ?? e) });
+    }
   }
 
   async function deleteRun() {
     setDeleteOpen(false);
-    const { error } = await supabase.from("runs").delete().eq("id", runId);
-    if (error) {
+    try {
+      await mustWrite(supabase.from("runs").delete().eq("id", runId).select("id"), "Deleting this run");
+      push({ tone: "info", title: "Run deleted", detail: runId.slice(0, 8) });
+      onBack();
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
       // FK guard: a run that already produced a version can't be deleted.
-      const fk = /foreign key|violates|constraint/i.test(error.message);
+      const fk = /foreign key|violates|constraint/i.test(msg);
       push({
         tone: "danger",
         title: "Delete failed",
-        detail: fk ? "This run has a published version — undeploy/remove the version first." : error.message,
+        detail: fk ? "This run has a published version — undeploy/remove the version first." : msg,
       });
-    } else {
-      push({ tone: "info", title: "Run deleted", detail: runId.slice(0, 8) });
-      onBack();
     }
   }
 

@@ -67,6 +67,35 @@ export function checkpointName(family: string, size: string, task: string) {
   return `${family}${size}${schema.taskSuffix[task] ?? ""}.pt`;
 }
 
+/**
+ * The inverse of `checkpointName`, kept directly beside it so the pair cannot drift.
+ *
+ * Returns `exact: false` when the name does not round-trip — an unrecognised size, a
+ * family this build does not know. The caller must surface that rather than quietly
+ * substituting a default: a form pre-filled with a value nobody chose is the disease
+ * this whole contract exists to cure.
+ */
+export function parseCheckpoint(weights: string): {
+  family: string;
+  size: string;
+  task: string;
+  exact: boolean;
+} {
+  const stem = String(weights ?? "").replace(/\.pt$/, "");
+  const family = stem.startsWith("yolo26") ? "yolo26" : "yolo11";
+  let task = "detect";
+  let rest = stem.startsWith(family) ? stem.slice(family.length) : stem;
+  for (const [t, sfx] of Object.entries(schema.taskSuffix as Record<string, string>)) {
+    if (sfx && stem.endsWith(sfx)) {
+      task = t;
+      rest = rest.slice(0, rest.length - sfx.length);
+    }
+  }
+  const known = (SIZES as readonly string[]).includes(rest);
+  const size = known ? rest : "s";
+  return { family, size, task, exact: known && checkpointName(family, size, task) === stem + ".pt" };
+}
+
 /** First matching capability rule wins; the last rule has an empty `when` and always matches. */
 export function capabilityFor(family: string, task: string): Capability {
   const hit = schema.capability.find(

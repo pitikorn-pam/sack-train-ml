@@ -29,6 +29,7 @@ import {
   SIZES, schema, paramsFor, capabilityFor, checkpointName, resolveEffective, validate,
   type Param, type Source,
 } from "../lib/schema";
+import { prefillFromConfig } from "../lib/prefill";
 
 const SOURCE_LABEL: Record<Source, string> = {
   set: "you set it",
@@ -89,25 +90,32 @@ function Derived({ p, value }: { p: Param; value: string }) {
   );
 }
 
-export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
+export function NewRunV3({
+  onCreated,
+  prefill,
+}: {
+  onCreated: (id: string) => void;
+  /** A previous run's stored config, when the operator asked to re-create it. */
+  prefill?: { runId: string; config: Record<string, unknown> } | null;
+}) {
   const { push } = useToast();
+  // Resolved once. Re-deriving on every render would fight the operator's own edits.
+  const [seed] = useState(() => prefillFromConfig(prefill?.config));
   const [modelLines, setModelLines] = useState<ModelLine[]>([]);
   const [slug] = useState("yolo11s-sack-hailo8l");
 
-  const [family, setFamily] = useState("yolo11");
-  const [task, setTask] = useState("detect");
-  const [size, setSize] = useState("s");
-  const [runName, setRunName] = useState(`sack-${new Date().toISOString().slice(0, 10)}`);
+  const [family, setFamily] = useState(seed.family);
+  const [task, setTask] = useState(seed.task);
+  const [size, setSize] = useState(seed.size);
+  const [runName, setRunName] = useState(seed.runName);
 
-  const [datasetKey, setDatasetKey] = useState("");
-  const [bundleKey, setBundleKey] = useState<string | null>(null);
-  const [classes, setClasses] = useState<string[]>(["person", "sack"]);
+  const [datasetKey, setDatasetKey] = useState(seed.datasetKey);
+  const [bundleKey, setBundleKey] = useState<string | null>(seed.bundleKey);
+  const [classes, setClasses] = useState<string[]>(seed.classes);
 
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(schema.params.filter((p) => p.category === "field").map((p) => [p.key, String(p.default ?? "")])),
-  );
-  const [advanced, setAdvanced] = useState("{}");
-  const [compile, setCompile] = useState(true);
+  const [values, setValues] = useState<Record<string, string>>(() => seed.values);
+  const [advanced, setAdvanced] = useState(seed.advanced);
+  const [compile, setCompile] = useState(seed.compile);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tab, setTab] = useState<"summary" | "yaml">("summary");
   const [profiles, setProfiles] = useState<RunProfile[]>([]);
@@ -267,6 +275,23 @@ export function NewRunV3({ onCreated }: { onCreated: (id: string) => void }) {
   return (
     <div className="pv3">
       <div className="pv3-main">
+        {prefill && (
+          /* A pre-filled form that does not say so looks like a blank one that
+             happens to disagree with the defaults. Say where the values came from,
+             and say plainly what could not be brought across. */
+          <div className="pv3-issue warning" role="status">
+            <strong>Pre-filled from run {prefill.runId.slice(0, 8)}.</strong>{" "}
+            Every value below came from that run unless noted. Edit anything before launching.
+            {seed.notRestored.length > 0 && (
+              <ul className="pv3-notrestored">
+                {seed.notRestored.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* 1 — model & dataset */}
         <section className="panel">
           <header className="pv3-sec">

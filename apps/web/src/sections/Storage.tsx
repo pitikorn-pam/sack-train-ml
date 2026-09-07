@@ -73,11 +73,23 @@ export function Storage({ isAdmin }: { isAdmin: boolean }) {
         },
         body: JSON.stringify({ version_id: confirm.id }),
       });
+      const payload = await res.json().catch(() => ({}) as Record<string, unknown>);
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
+        // The function keeps the registry row when an R2 delete fails, precisely so a
+        // retry is possible — say which objects survived rather than a bare status.
+        const detail =
+          typeof payload.detail === "string"
+            ? `${payload.error ?? res.status}: ${payload.detail}`
+            : `${res.status}: ${JSON.stringify(payload)}`;
+        throw new Error(detail);
       }
-      push({ tone: "success", title: "Version deleted", detail: `v${confirm.semver} removed from R2 + DB` });
+      // Report what the server said it removed, not what we hoped it would.
+      const removed = Array.isArray(payload.removed) ? payload.removed.length : 0;
+      push({
+        tone: "success",
+        title: "Version deleted",
+        detail: `v${confirm.semver} · ${removed} object${removed === 1 ? "" : "s"} removed from R2, registry row deleted`,
+      });
       setConfirm(null);
       load();
     } catch (e: any) {

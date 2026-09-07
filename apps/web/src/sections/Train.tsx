@@ -8,11 +8,20 @@ type Tab = "form" | "live" | "recent";
 export function Train() {
   const [tab, setTab] = useState<Tab>("recent");
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  // "Re-create with same config" used to hand the config to a callback that ignored
+  // it and opened a blank form. The config now reaches the form.
+  const [prefill, setPrefill] = useState<{ runId: string; config: Record<string, unknown> } | null>(null);
 
   return (
     <div>
       <div className="sub-tabs">
-        <button className={tab === "form" ? "active" : ""} onClick={() => setTab("form")}>
+        <button
+          className={tab === "form" ? "active" : ""}
+          onClick={() => {
+            setPrefill(null);
+            setTab("form");
+          }}
+        >
           New run
         </button>
         <button className={tab === "live" ? "active" : ""} onClick={() => setTab("live")}>
@@ -27,8 +36,12 @@ export function Train() {
           width. The list tabs keep the two-column layout with run detail beside them. */}
       {tab === "form" ? (
         <NewRunV3
+          // Remount when the source run changes, so the form re-seeds from it.
+          key={prefill?.runId ?? "blank"}
+          prefill={prefill}
           onCreated={(id) => {
             setSelectedRun(id);
+            setPrefill(null);
             setTab("live");
           }}
         />
@@ -44,7 +57,10 @@ export function Train() {
               <RunDetail
                 runId={selectedRun}
                 onBack={() => setSelectedRun(null)}
-                onRecreate={() => setTab("form")}
+                onRecreate={(config) => {
+                  setPrefill({ runId: selectedRun, config });
+                  setTab("form");
+                }}
               />
             ) : (
               <div className="panel empty-state">
