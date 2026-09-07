@@ -76,6 +76,13 @@ supabase functions deploy --use-api
 # training-callback, upload-artifact, upload-dataset. See docs/security.md.
 
 # 4. Run the web dashboard
+#
+# NOTE for whoever deploys this: the app uses client-side routing, so every section has
+# a real URL (/overview, /train, /models, /storage, /lab). A static host must serve
+# index.html for ALL paths, or a refresh on /lab returns 404. Vite's dev server does
+# this already; Cloudflare Pages / Netlify need a `/* -> /index.html 200` rule, nginx
+# needs `try_files $uri /index.html`, and Cloud Run behind a static bucket needs the
+# equivalent rewrite.
 cd apps/web
 cp .env.example .env.local && $EDITOR .env.local  # VITE_SUPABASE_*
 npm install && npm run dev   # → http://localhost:5173

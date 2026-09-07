@@ -96,6 +96,10 @@ main {
 .topbar-brand .eyebrow { font-size: 10px; margin-bottom: 2px; }
 
 .topbar-nav { flex: 1; display: flex; gap: var(--space-xxs); justify-content: center; }
+/* The nav is anchors, not buttons: each section has a real URL now, so a middle-click
+   opens it in a tab and the browser back button works. `a` is matched alongside `button`
+   so an older snapshot of this file still renders. */
+.topbar-nav a,
 .topbar-nav button {
   padding: 8px 14px;
   background: transparent;
@@ -106,12 +110,22 @@ main {
   font-weight: var(--fw-medium);
   border-radius: var(--radius-md);
   cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1.4;
   transition: background var(--t-fast), color var(--t-fast);
 }
+.topbar-nav a:hover,
 .topbar-nav button:hover { background: var(--color-surface-soft); color: var(--color-ink); }
+.topbar-nav a.active,
 .topbar-nav button.active {
   background: var(--color-primary-soft);
   color: var(--color-primary-active);
+}
+/* Focus must stay visible on a link the keyboard can reach. */
+.topbar-nav a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-ring, rgba(0,128,200,.2));
 }
 
 .topbar-account { display: flex; align-items: center; gap: var(--space-sm); }
