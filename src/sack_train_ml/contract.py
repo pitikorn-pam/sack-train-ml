@@ -44,6 +44,21 @@ def pinned_versions() -> dict[str, str]:
     return dict(schema()["toolchain"])
 
 
+def artifact_kinds() -> dict[str, dict[str, str]]:
+    """Every artifact kind, with its extension, content type and bundle name.
+
+    This lived in five places that could drift and did: the Python Literal omitted
+    `effective_config` while the pipeline uploaded it, and the download allow-list
+    omitted its extension, which is what made the third provenance layer write-only.
+    `tests/test_artifact_kinds.py` holds every remaining copy to this one.
+    """
+    return dict(schema()["artifactKinds"])
+
+
+def artifact_extension(kind: str) -> str:
+    return artifact_kinds()[kind]["extension"]
+
+
 def dfc_wheel_key() -> str:
     """R2 key of the gated Dataflow Compiler wheel, named by the pinned DFC version.
 

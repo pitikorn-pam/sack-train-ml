@@ -137,7 +137,18 @@ serve(async (req) => {
     const logs = Array.isArray(cfg.logs) ? cfg.logs : [];
     logs.push(entry);
     cfg.logs = logs;
-    await sb.from("runs").update({ config_yaml: cfg }).eq("id", event.run_id);
+    // Read-modify-write, so two CONCURRENT log events would lose one. Today they
+    // cannot be concurrent: log_step is called sequentially from the single pipeline
+    // process, and the per-epoch traffic goes to run_metrics, not here. A second
+    // writer — a compile runner, or a retry overlapping the original — would make it
+    // reachable, and then this needs an atomic jsonb append in the database.
+    const { data: logged, error: logErr } = await sb
+      .from("runs")
+      .update({ config_yaml: cfg })
+      .eq("id", event.run_id)
+      .select("id");
+    if (logErr) return json({ error: "log_write_failed", detail: logErr.message }, 500);
+    if (!logged?.length) return json({ error: "run_not_found", run_id: event.run_id }, 404);
     return json({ ok: true });
   }
 
@@ -146,7 +157,16 @@ serve(async (req) => {
       status: event.type,
       finished_at: new Date().toISOString(),
     };
-    await sb.from("runs").update(patch).eq("id", event.run_id);
+    // A status transition that did not land is indistinguishable from one that did if
+    // nobody looks. The metric branch above already checks its write; this is the same
+    // pattern, applied where it was missing.
+    const { data: moved, error: statusErr } = await sb
+      .from("runs")
+      .update(patch)
+      .eq("id", event.run_id)
+      .select("id");
+    if (statusErr) return json({ error: "status_write_failed", detail: statusErr.message }, 500);
+    if (!moved?.length) return json({ error: "run_not_found", run_id: event.run_id }, 404);
 
     if (event.type === "failed" && event.error) {
       const { data: run } = await sb
@@ -164,7 +184,14 @@ serve(async (req) => {
         message: event.error,
       });
       cfg.logs = logs;
-      await sb.from("runs").update({ config_yaml: cfg }).eq("id", event.run_id);
+      const { error: errLogErr } = await sb
+        .from("runs")
+        .update({ config_yaml: cfg })
+        .eq("id", event.run_id)
+        .select("id");
+      // The run is already marked failed; losing the reason is bad but not worth
+      // failing the callback over. Report it so the caller knows the log is short.
+      if (errLogErr) return json({ ok: true, error_message_not_recorded: errLogErr.message });
     }
     return json({ ok: true });
   }

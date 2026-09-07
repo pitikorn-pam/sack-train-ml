@@ -10,6 +10,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
 } from "https://esm.sh/@aws-sdk/client-s3@3.620.0";
 import { getSignedUrl } from "https://esm.sh/@aws-sdk/s3-request-presigner@3.620.0";
 
@@ -35,6 +36,22 @@ export async function presignGet(key: string, expiresIn = 3600): Promise<string>
     new GetObjectCommand({ Bucket: BUCKET(), Key: key }),
     { expiresIn },
   );
+}
+
+/**
+ * Whether the object is there right now.
+ *
+ * Needed because S3-compatible DELETE is idempotent — it succeeds for a key that never
+ * existed — so "the delete returned ok" is not evidence that anything was removed, and
+ * a caller that reports one as the other is guessing.
+ */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {

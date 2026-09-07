@@ -17,7 +17,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 
-ArtifactKind = Literal["pytorch", "onnx", "hef", "hef_meta"]
+# Must match contracts/param-schema.json::artifactKinds — tests/test_artifact_kinds.py
+# holds it there. `effective_config` was missing while train_for_run.py uploaded it.
+ArtifactKind = Literal["pytorch", "onnx", "hef", "hef_meta", "effective_config"]
 
 
 # ----------------------------------------------------------------------------

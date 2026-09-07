@@ -36,12 +36,12 @@ def assemble_bundle(
     bundle = Path(bundle_dir)
     bundle.mkdir(parents=True, exist_ok=True)
 
-    name_map = {
-        "pytorch": "best.pt",
-        "onnx": "model.onnx",
-        "hef": "model.hef",
-        "hef_meta": "model.hef.meta.yaml",
-    }
+    # From the schema rather than a fifth copy: this map silently omitted
+    # `effective_config`, so the provenance artifact landed in a bundle under its
+    # temp-file name instead of a stable one.
+    from sack_train_ml.contract import artifact_kinds
+
+    name_map = {kind: spec["bundleName"] for kind, spec in artifact_kinds().items()}
     for kind, src in artifacts.items():
         dst_name = name_map.get(kind, Path(src).name)
         shutil.copy2(src, bundle / dst_name)

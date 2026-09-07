@@ -39,9 +39,13 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
-_VIDEO_STORE: dict[str, str] = {}   # video_id -> output mp4 path
+_VIDEO_STORE: OrderedDict[str, str] = OrderedDict()   # video_id -> output mp4 path, oldest first
 _RUN_HISTORY: dict[str, dict] = {}  # bounded, process-local truthful history
 MAX_RUN_HISTORY = 100
+# Each replay adds one entry pointing at a NamedTemporaryFile(delete=False) mp4.
+# The input video and the uploaded model are cleaned up in the endpoints' finally
+# blocks; the output never was, so the store and the disk both grew without end.
+MAX_VIDEO_STORE = 100
 RUN_SCHEMA_VERSION = "lab.v1"
 MAX_JOB_STORE = 100
 MAX_MANIFEST_EVENT_RECORDS = 1000
@@ -544,11 +548,27 @@ async def _prepare_inference(video: UploadFile, config: str, model: UploadFile |
         raise
 
 
+def _evict_videos() -> None:
+    """Drop the oldest rendered videos, and delete the files they pointed at.
+
+    Insertion-ordered dict, so the first key is the oldest. Unlinking is best-effort:
+    a video currently being streamed will fail to delete on some platforms, and losing
+    the temp file matters less than serving the request.
+    """
+    while len(_VIDEO_STORE) > MAX_VIDEO_STORE:
+        _, path = _VIDEO_STORE.popitem(last=False)
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def _store_result(result: lab_core.LabResult, *, cfg: lab_core.LabConfig,
                   model_metadata: dict, input_filename: str | None,
                   input_sha256: str | None, task_id: str | None = None) -> dict:
     vid = uuid.uuid4().hex
     _VIDEO_STORE[vid] = result.output_video
+    _evict_videos()
     run_id = uuid.uuid4().hex
     created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     model_identifier = str(model_metadata.get("model_identifier") or model_metadata.get("model_filename") or "uploaded-model")

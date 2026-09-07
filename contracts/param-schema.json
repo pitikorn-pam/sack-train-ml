@@ -1,53 +1,156 @@
 {
   "$comment": "SINGLE SOURCE OF TRUTH for the training/compile parameter contract. Read directly by the browser, the start-training edge function, and the Python pipeline — no codegen. See .scratch/train-param-contract/issues/05. A conformance test asserts every train key exists in ultralytics DEFAULT_CFG_DICT for the pinned version.",
-  "toolchain": { "ultralytics": "8.4.138", "dfc": "3.33.1", "hailort": "4.20.0" },
-
+  "toolchain": {
+    "ultralytics": "8.4.138",
+    "dfc": "3.33.1",
+    "hailort": "4.20.0"
+  },
+  "artifactKinds": {
+    "pytorch": {
+      "extension": "pt",
+      "contentType": "application/octet-stream",
+      "bundleName": "best.pt"
+    },
+    "onnx": {
+      "extension": "onnx",
+      "contentType": "application/octet-stream",
+      "bundleName": "model.onnx"
+    },
+    "hef": {
+      "extension": "hef",
+      "contentType": "application/octet-stream",
+      "bundleName": "model.hef"
+    },
+    "hef_meta": {
+      "extension": "hef.meta.yaml",
+      "contentType": "application/x-yaml",
+      "bundleName": "model.hef.meta.yaml"
+    },
+    "effective_config": {
+      "extension": "effective-config.json",
+      "contentType": "application/json",
+      "bundleName": "effective-config.json"
+    }
+  },
   "families": {
     "yolo11": {
       "label": "YOLO11",
       "docs": "https://docs.ultralytics.com/models/yolo11",
-      "tasks": ["detect", "segment", "classify", "pose", "obb"],
+      "tasks": [
+        "detect",
+        "segment",
+        "classify",
+        "pose",
+        "obb"
+      ],
       "metrics": {
         "detect": {
-          "n": { "params": "2.6M", "map": "39.5", "flops": "6.5" },
-          "s": { "params": "9.4M", "map": "47.0", "flops": "21.6" },
-          "m": { "params": "20.1M", "map": "51.5", "flops": "68.1" },
-          "l": { "params": "25.3M", "map": "53.4", "flops": "87.2" },
-          "x": { "params": "56.9M", "map": "54.7", "flops": "195.3" }
+          "n": {
+            "params": "2.6M",
+            "map": "39.5",
+            "flops": "6.5"
+          },
+          "s": {
+            "params": "9.4M",
+            "map": "47.0",
+            "flops": "21.6"
+          },
+          "m": {
+            "params": "20.1M",
+            "map": "51.5",
+            "flops": "68.1"
+          },
+          "l": {
+            "params": "25.3M",
+            "map": "53.4",
+            "flops": "87.2"
+          },
+          "x": {
+            "params": "56.9M",
+            "map": "54.7",
+            "flops": "195.3"
+          }
         }
       }
     },
     "yolo26": {
       "label": "YOLO26",
       "docs": "https://docs.ultralytics.com/models/yolo26",
-      "tasks": ["detect", "segment", "semantic", "depth", "classify", "pose", "obb"],
+      "tasks": [
+        "detect",
+        "segment",
+        "semantic",
+        "depth",
+        "classify",
+        "pose",
+        "obb"
+      ],
       "metrics": {
         "detect": {
-          "n": { "params": "2.4M", "map": "40.9", "e2e": "40.1", "flops": "5.5" },
-          "s": { "params": "9.5M", "map": "48.6", "e2e": "47.8", "flops": "20.9" },
-          "m": { "params": "20.4M", "map": "53.1", "e2e": "52.5", "flops": "68.4" },
-          "l": { "params": "24.8M", "map": "55.0", "e2e": "54.4", "flops": "86.8" },
-          "x": { "params": "55.7M", "map": "57.5", "e2e": "56.9", "flops": "194.4" }
+          "n": {
+            "params": "2.4M",
+            "map": "40.9",
+            "e2e": "40.1",
+            "flops": "5.5"
+          },
+          "s": {
+            "params": "9.5M",
+            "map": "48.6",
+            "e2e": "47.8",
+            "flops": "20.9"
+          },
+          "m": {
+            "params": "20.4M",
+            "map": "53.1",
+            "e2e": "52.5",
+            "flops": "68.4"
+          },
+          "l": {
+            "params": "24.8M",
+            "map": "55.0",
+            "e2e": "54.4",
+            "flops": "86.8"
+          },
+          "x": {
+            "params": "55.7M",
+            "map": "57.5",
+            "e2e": "56.9",
+            "flops": "194.4"
+          }
         }
       }
     }
   },
-
   "taskLabels": {
-    "detect": "Detection", "segment": "Instance Seg", "semantic": "Semantic Seg",
-    "depth": "Depth", "classify": "Classification", "pose": "Pose", "obb": "OBB"
+    "detect": "Detection",
+    "segment": "Instance Seg",
+    "semantic": "Semantic Seg",
+    "depth": "Depth",
+    "classify": "Classification",
+    "pose": "Pose",
+    "obb": "OBB"
   },
   "taskSuffix": {
-    "detect": "", "segment": "-seg", "semantic": "-sem", "depth": "-depth",
-    "classify": "-cls", "pose": "-pose", "obb": "-obb"
+    "detect": "",
+    "segment": "-seg",
+    "semantic": "-sem",
+    "depth": "-depth",
+    "classify": "-cls",
+    "pose": "-pose",
+    "obb": "-obb"
   },
   "sizeLabels": {
-    "n": "Nano · fastest", "s": "Small · balanced", "m": "Medium", "l": "Large", "x": "X-Large"
+    "n": "Nano · fastest",
+    "s": "Small · balanced",
+    "m": "Medium",
+    "l": "Large",
+    "x": "X-Large"
   },
-
   "capability": [
     {
-      "when": { "family": "yolo26" },
+      "when": {
+        "family": "yolo26"
+      },
       "level": "blocked",
       "profile": "unsupported",
       "title": "Cannot reach a working HEF — YOLO26 pipeline not built",
@@ -55,7 +158,12 @@
       "status": "YOLO26 → Hailo-8L produces an undeployable HEF"
     },
     {
-      "when": { "task": ["pose", "obb"] },
+      "when": {
+        "task": [
+          "pose",
+          "obb"
+        ]
+      },
       "level": "blocked",
       "profile": "unsupported",
       "title": "Compiles with the extra branch silently removed",
@@ -63,7 +171,12 @@
       "status": "loses its extra branch in compile"
     },
     {
-      "when": { "family": "yolo11", "task": ["detect"] },
+      "when": {
+        "family": "yolo11",
+        "task": [
+          "detect"
+        ]
+      },
       "level": "ok",
       "profile": "yolo11-det-h8l-v3",
       "title": "BSCP pipeline supported",
@@ -71,7 +184,12 @@
       "status": "BSCP Hailo pipeline available for selected model"
     },
     {
-      "when": { "family": "yolo11", "task": ["segment"] },
+      "when": {
+        "family": "yolo11",
+        "task": [
+          "segment"
+        ]
+      },
       "level": "warn",
       "profile": "yolo11-seg-h8l-hostdecode",
       "title": "Host-side decode required",
@@ -87,120 +205,291 @@
       "status": "BSCP deployment path not yet validated"
     }
   ],
-
   "params": [
-    { "key": "epochs", "form": "train", "category": "field", "type": "int", "default": 100, "min": 1, "max": 1000,
+    {
+      "key": "epochs",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 100,
+      "min": 1,
+      "max": 1000,
       "label": "Epochs",
-      "help": "How many passes over the dataset. The primary lever on both cost and fit — too few underfits, too many overfits and burns Colab time." },
-
-    { "key": "imgsz", "form": "train", "category": "field", "type": "int", "default": 640, "step": 32, "min": 320, "max": 1280,
+      "help": "How many passes over the dataset. The primary lever on both cost and fit — too few underfits, too many overfits and burns Colab time."
+    },
+    {
+      "key": "imgsz",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 640,
+      "step": 32,
+      "min": 320,
+      "max": 1280,
       "label": "Image size",
-      "help": "Training resolution, a multiple of 32. The compile run inherits this value as its input shape — they can never disagree." },
-
-    { "key": "batch", "form": "train", "category": "field", "type": "enum", "default": "auto", "enum": ["auto", "4", "8", "16", "32"],
+      "help": "Training resolution, a multiple of 32. The compile run inherits this value as its input shape — they can never disagree."
+    },
+    {
+      "key": "batch",
+      "form": "train",
+      "category": "field",
+      "type": "enum",
+      "default": "auto",
+      "enum": [
+        "auto",
+        "4",
+        "8",
+        "16",
+        "32"
+      ],
       "label": "Batch size",
-      "help": "Images per step. 'auto' lets ultralytics size it to the GPU it actually gets, which varies between Colab sessions." },
-
-    { "key": "optimizer", "form": "train", "category": "field", "type": "enum", "default": "AdamW",
-      "enum": ["AdamW", "SGD", "Adam", "NAdam", "RAdam", "RMSProp", "auto"],
-      "discouraged": ["auto"],
+      "help": "Images per step. 'auto' lets ultralytics size it to the GPU it actually gets, which varies between Colab sessions."
+    },
+    {
+      "key": "optimizer",
+      "form": "train",
+      "category": "field",
+      "type": "enum",
+      "default": "AdamW",
+      "enum": [
+        "AdamW",
+        "SGD",
+        "Adam",
+        "NAdam",
+        "RAdam",
+        "RMSProp",
+        "auto"
+      ],
+      "discouraged": [
+        "auto"
+      ],
       "label": "Optimizer",
-      "help": "The algorithm that updates the weights. Pinned to AdamW because 'auto' switches to an experimental optimizer once a run passes ~10,000 iterations and silently discards your learning rate — one release of it crashed at epoch 1." },
-
-    { "key": "lr0", "form": "train", "category": "field", "type": "float", "default": 0.001, "min": 0.00001, "max": 0.1,
+      "help": "The algorithm that updates the weights. Pinned to AdamW because 'auto' switches to an experimental optimizer once a run passes ~10,000 iterations and silently discards your learning rate — one release of it crashed at epoch 1."
+    },
+    {
+      "key": "lr0",
+      "form": "train",
+      "category": "field",
+      "type": "float",
+      "default": 0.001,
+      "min": 1e-05,
+      "max": 0.1,
       "label": "Learning rate",
-      "help": "Initial learning rate. ~0.001 suits AdamW fine-tuning from a pretrained checkpoint; larger values destabilise a small dataset." },
-
-    { "key": "patience", "form": "train", "category": "field", "type": "int", "default": 20, "min": 0, "max": 300,
+      "help": "Initial learning rate. ~0.001 suits AdamW fine-tuning from a pretrained checkpoint; larger values destabilise a small dataset."
+    },
+    {
+      "key": "patience",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 20,
+      "min": 0,
+      "max": 300,
       "label": "Patience",
-      "help": "Stop after this many epochs without improvement. On a small dataset this is usually what actually ends the run, not the epoch count." },
-
-    { "key": "seed", "form": "train", "category": "field", "type": "int", "default": 0,
+      "help": "Stop after this many epochs without improvement. On a small dataset this is usually what actually ends the run, not the epoch count."
+    },
+    {
+      "key": "seed",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 0,
       "label": "Seed",
-      "help": "Fixes the random draw so two runs can be compared. Required by the experiment discipline for any result you intend to cite." },
-
-    { "key": "deterministic", "form": "train", "category": "field", "type": "enum", "default": "true", "enum": ["true", "false"],
+      "help": "Fixes the random draw so two runs can be compared. Required by the experiment discipline for any result you intend to cite."
+    },
+    {
+      "key": "deterministic",
+      "form": "train",
+      "category": "field",
+      "type": "enum",
+      "default": "true",
+      "enum": [
+        "true",
+        "false"
+      ],
       "label": "Deterministic",
-      "help": "A seed alone does not make a run reproducible — this is what does. Turn it off only if you need the speed and do not intend to compare the result." },
-
-    { "key": "save_period", "form": "train", "category": "field", "type": "int", "default": 25, "min": -1,
+      "help": "A seed alone does not make a run reproducible — this is what does. Turn it off only if you need the speed and do not intend to compare the result."
+    },
+    {
+      "key": "save_period",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 25,
+      "min": -1,
       "label": "Checkpoint every",
-      "help": "Save a checkpoint every N epochs. Colab sessions die mid-run — this repo has lost one at epoch 196 — and a checkpoint turns that into a resume instead of a restart." },
-
-    { "key": "close_mosaic", "form": "train", "category": "field", "type": "int", "default": 10, "min": 0,
+      "help": "Save a checkpoint every N epochs. Colab sessions die mid-run — this repo has lost one at epoch 196 — and a checkpoint turns that into a resume instead of a restart."
+    },
+    {
+      "key": "close_mosaic",
+      "form": "train",
+      "category": "field",
+      "type": "int",
+      "default": 10,
+      "min": 0,
       "label": "Close mosaic",
-      "help": "Disable mosaic augmentation for the final N epochs, so validation metrics reflect deployment-shaped images rather than collages." },
-
-    { "key": "fraction", "form": "train", "category": "field", "type": "float", "default": 1.0, "min": 0.01, "max": 1.0,
+      "help": "Disable mosaic augmentation for the final N epochs, so validation metrics reflect deployment-shaped images rather than collages."
+    },
+    {
+      "key": "fraction",
+      "form": "train",
+      "category": "field",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.01,
+      "max": 1.0,
       "label": "Dataset fraction",
-      "help": "Train on a subset. Useful for a deliberate smoke test — and the quietest footgun here, because a value left over from one produces a plausible but under-trained model." },
-
-    { "key": "freeze", "form": "train", "category": "field", "type": "text", "default": "none",
+      "help": "Train on a subset. Useful for a deliberate smoke test — and the quietest footgun here, because a value left over from one produces a plausible but under-trained model."
+    },
+    {
+      "key": "freeze",
+      "form": "train",
+      "category": "field",
+      "type": "text",
+      "default": "none",
       "label": "Freeze layers",
-      "help": "Freeze the first N backbone layers. The natural lever when the dataset is small and the pretrained features are already close." },
-
-    { "key": "classes", "form": "train", "category": "derived", "derivedFrom": "the dataset YAML",
+      "help": "Freeze the first N backbone layers. The natural lever when the dataset is small and the pretrained features are already close."
+    },
+    {
+      "key": "classes",
+      "form": "train",
+      "category": "derived",
+      "derivedFrom": "the dataset YAML",
       "label": "Classes",
-      "help": "Read from the dataset manifest. Not editable — the class list must match the compile config and the edge decoder exactly, and a mismatch is a hard runtime error on the device." },
-
-    { "key": "single_cls", "form": "train", "category": "refused",
+      "help": "Read from the dataset manifest. Not editable — the class list must match the compile config and the edge decoder exactly, and a mismatch is a hard runtime error on the device."
+    },
+    {
+      "key": "single_cls",
+      "form": "train",
+      "category": "refused",
       "label": "single_cls",
-      "help": "Collapses every class into one. The whole downstream contract is two classes — the labelmap, the on-chip NMS config and the edge runtime — so a run with this set would train, export, compile, deploy, and be wrong." },
-
-    { "key": "calibration_set", "form": "compile", "category": "refused",
+      "help": "Collapses every class into one. The whole downstream contract is two classes — the labelmap, the on-chip NMS config and the edge runtime — so a run with this set would train, export, compile, deploy, and be wrong."
+    },
+    {
+      "key": "calibration_set",
+      "form": "compile",
+      "category": "refused",
       "label": "Calibration set",
-      "help": "The compile calibrates on the images the run already holds — its dataset's val split, train as fallback. No curated onsite set is registered anywhere a Colab session can fetch by name, so choosing one here would name images the compile could not load. Register the onsite frames as a dataset first, then this becomes a field again." },
-
-    { "key": "calib_n", "form": "compile", "category": "field", "type": "int", "default": 512, "min": 64, "max": 4096,
+      "help": "The compile calibrates on the images the run already holds — its dataset's val split, train as fallback. No curated onsite set is registered anywhere a Colab session can fetch by name, so choosing one here would name images the compile could not load. Register the onsite frames as a dataset first, then this becomes a field again."
+    },
+    {
+      "key": "calib_n",
+      "form": "compile",
+      "category": "field",
+      "type": "int",
+      "default": 512,
+      "min": 64,
+      "max": 4096,
       "label": "Calibration images",
-      "help": "How many calibration images to use. Optimization level 2 expects at least 1024 — fewer, and its fine-tuning step has too little to work with." },
-
-    { "key": "optimization_level", "form": "compile", "category": "field", "type": "enum", "default": "0", "enum": ["0", "1", "2"],
+      "help": "How many calibration images to use. Optimization level 2 expects at least 1024 — fewer, and its fine-tuning step has too little to work with."
+    },
+    {
+      "key": "optimization_level",
+      "form": "compile",
+      "category": "field",
+      "type": "enum",
+      "default": "0",
+      "enum": [
+        "0",
+        "1",
+        "2"
+      ],
       "label": "Optimization level",
-      "help": "0 is basic quantization, proven here. 2 is quantization-aware FINE-TUNING — four epochs over 1024 images — which wants a GPU; without one the compiler silently drops back to 0, and a diverging fine-tune is the known cause of a dead HEF." },
-
-    { "key": "scores_th", "form": "compile", "category": "field", "type": "float", "default": 0.2, "min": 0.01, "max": 0.9,
+      "help": "0 is basic quantization, proven here. 2 is quantization-aware FINE-TUNING — four epochs over 1024 images — which wants a GPU; without one the compiler silently drops back to 0, and a diverging fine-tune is the known cause of a dead HEF."
+    },
+    {
+      "key": "scores_th",
+      "form": "compile",
+      "category": "field",
+      "type": "float",
+      "default": 0.2,
+      "min": 0.01,
+      "max": 0.9,
       "label": "NMS score threshold",
-      "help": "A hard floor baked into the HEF: nothing scoring below this can ever leave the model, so it caps what the flagging band can see. Kept low deliberately." },
-
-    { "key": "iou_th", "form": "compile", "category": "field", "type": "float", "default": 0.7, "min": 0.1, "max": 0.95,
+      "help": "A hard floor baked into the HEF: nothing scoring below this can ever leave the model, so it caps what the flagging band can see. Kept low deliberately."
+    },
+    {
+      "key": "iou_th",
+      "form": "compile",
+      "category": "field",
+      "type": "float",
+      "default": 0.7,
+      "min": 0.1,
+      "max": 0.95,
       "label": "NMS IoU threshold",
-      "help": "How much two boxes may overlap before one is suppressed. Kept high so two sacks touching each other are not merged into one detection." },
-
-    { "key": "max_proposals_per_class", "form": "compile", "category": "field", "type": "int", "default": 50, "min": 10, "max": 300,
+      "help": "How much two boxes may overlap before one is suppressed. Kept high so two sacks touching each other are not merged into one detection."
+    },
+    {
+      "key": "max_proposals_per_class",
+      "form": "compile",
+      "category": "field",
+      "type": "int",
+      "default": 50,
+      "min": 10,
+      "max": 300,
       "label": "Max detections per class",
-      "help": "Sizes the output buffer, so it truncates rather than warns: a frame busier than this silently loses its tail." },
-
-    { "key": "input_conversion", "form": "compile", "category": "refused",
+      "help": "Sizes the output buffer, so it truncates rather than warns: a frame busier than this silently loses its tail."
+    },
+    {
+      "key": "input_conversion",
+      "form": "compile",
+      "category": "refused",
       "label": "Input conversion",
-      "help": "Nothing applies it. The compile's model script sets normalization only (scripts/compile_clientrunner.py:225-228), so a conversion chosen here would be dropped in silence — and a silent RGB/BGR mismatch degrades every score without ever raising an error. It needs an input_conversion() line in that model script before it can be offered." },
-
-    { "key": "compile_seed", "form": "compile", "category": "refused",
+      "help": "Nothing applies it. The compile's model script sets normalization only (scripts/compile_clientrunner.py:225-228), so a conversion chosen here would be dropped in silence — and a silent RGB/BGR mismatch degrades every score without ever raising an error. It needs an input_conversion() line in that model script before it can be offered."
+    },
+    {
+      "key": "compile_seed",
+      "form": "compile",
+      "category": "refused",
       "label": "Compile seed",
-      "help": "The DFC ClientRunner recipe takes no seed (scripts/compile_clientrunner.py), so a value here would fix nothing while implying a reproducibility the compile cannot give." },
-
-    { "key": "diagnostics", "form": "compile", "category": "refused",
+      "help": "The DFC ClientRunner recipe takes no seed (scripts/compile_clientrunner.py), so a value here would fix nothing while implying a reproducibility the compile cannot give."
+    },
+    {
+      "key": "diagnostics",
+      "form": "compile",
+      "category": "refused",
       "label": "Run FP32-vs-INT8 check",
-      "help": "Nothing in the run measures it. The compile parses, quantizes and compiles (scripts/compile_clientrunner.py); no step compares the model before and after quantization, so this switch would promise a check that never runs." },
-
-    { "key": "dfc_wheel", "form": "compile", "category": "derived", "derivedFrom": "the pinned Dataflow Compiler version",
+      "help": "Nothing in the run measures it. The compile parses, quantizes and compiles (scripts/compile_clientrunner.py); no step compares the model before and after quantization, so this switch would promise a check that never runs."
+    },
+    {
+      "key": "dfc_wheel",
+      "form": "compile",
+      "category": "derived",
+      "derivedFrom": "the pinned Dataflow Compiler version",
       "label": "Compiler wheel",
-      "help": "The gated DFC wheel the run installs, named from the pinned toolchain version rather than typed per run — so the compiler build and the recipe proven against it can never disagree. Typed per run, it was simply never sent, and every compile failed on its absence." },
-
-    { "key": "input_shape", "form": "compile", "category": "derived", "derivedFrom": "the source run's imgsz",
+      "help": "The gated DFC wheel the run installs, named from the pinned toolchain version rather than typed per run — so the compiler build and the recipe proven against it can never disagree. Typed per run, it was simply never sent, and every compile failed on its absence."
+    },
+    {
+      "key": "input_shape",
+      "form": "compile",
+      "category": "derived",
+      "derivedFrom": "the source run's imgsz",
       "label": "Input shape",
-      "help": "Taken from the run that produced the ONNX. A compile cannot use a different input size than the model was trained at." },
-
-    { "key": "regression_length", "form": "compile", "category": "derived", "derivedFrom": "the detection head",
+      "help": "Taken from the run that produced the ONNX. A compile cannot use a different input size than the model was trained at."
+    },
+    {
+      "key": "regression_length",
+      "form": "compile",
+      "category": "derived",
+      "derivedFrom": "the detection head",
       "label": "Regression length",
-      "help": "The DFL bin count, fixed by the architecture at box_channels/4. Not a preference — a wrong value produces correctly-scored boxes in the wrong places." },
-
-    { "key": "compiler_profile", "form": "compile", "category": "derived", "derivedFrom": "the model family and task",
+      "help": "The DFL bin count, fixed by the architecture at box_channels/4. Not a preference — a wrong value produces correctly-scored boxes in the wrong places."
+    },
+    {
+      "key": "compiler_profile",
+      "form": "compile",
+      "category": "derived",
+      "derivedFrom": "the model family and task",
       "label": "Compiler profile",
-      "help": "The named, versioned compile recipe implied by the chosen model and task." },
-
-    { "key": "compression_level", "form": "compile", "category": "derived", "derivedFrom": "project policy",
+      "help": "The named, versioned compile recipe implied by the chosen model and task."
+    },
+    {
+      "key": "compression_level",
+      "form": "compile",
+      "category": "derived",
+      "derivedFrom": "project policy",
       "label": "Compression level",
-      "help": "Pinned to 0. Four-bit weight compression trades accuracy for frame rate, which this line does not need." }
+      "help": "Pinned to 0. Four-bit weight compression trades accuracy for frame rate, which this line does not need."
+    }
   ]
 }
