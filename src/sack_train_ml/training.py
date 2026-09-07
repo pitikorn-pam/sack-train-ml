@@ -77,7 +77,11 @@ def make_metric_callback(
 ) -> Callable[[Any], None]:
     """Return an ``on_fit_epoch_end(trainer)`` callback for YOLO."""
 
-    def _on_fit_epoch_end(trainer: Any) -> None:  # pragma: no cover - YOLO runtime
+    def _on_fit_epoch_end(trainer: Any) -> None:
+        # Covered by tests/test_training.py. It needs no YOLO — only an object with
+        # .epoch and .metrics — and it is the code whose failure mode is losing hours
+        # of finished GPU work to a single 502, so "hard to test" was never true and
+        # "not worth testing" was the opposite of true.
         # Telemetry must never abort training. Anything raised in here escapes
         # through ultralytics' callback loop and kills the run mid-epoch — a
         # single 502 from the callback endpoint once discarded 197 finished
