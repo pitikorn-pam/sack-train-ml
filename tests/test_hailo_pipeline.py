@@ -122,3 +122,80 @@ def test_meta_yaml_nests_without_losing_a_level():
     yaml = pytest.importorskip("yaml")
     parsed = yaml.safe_load(_dump_simple_yaml({"a": {"b": {"c": 1}}}))
     assert parsed == {"a": {"b": {"c": 1}}}
+
+
+# ---------------------------------------------------------------------------
+# DFC interpreter selection
+#
+# The DFC venv is the step that silently ate a Colab session: the runtime moved to
+# python 3.13, the venv was built on it anyway, every install inside it failed, and
+# the first visible error was a scipy build failure that never named the
+# interpreter. These pin the guard, because the failure it prevents is expensive
+# and invisible — nothing downstream of a bad venv reports a wrong python.
+# ---------------------------------------------------------------------------
+
+def test_dfc_python_is_the_highest_version_every_pin_has_a_wheel_for():
+    """3.11 is not a preference. numpy==1.23.3 and scipy==1.10.1 publish cp38-cp311,
+    and DFC 3.33.1's own scipy==1.12.0 pin stops at cp312 — so 3.11 is the ceiling,
+    and raising this constant without re-checking PyPI would reintroduce the failure."""
+    from sack_train_ml.hailo_pipeline import DFC_PYTHON, _DFC_VENV_DEPS
+
+    assert DFC_PYTHON == "3.11"
+    assert "numpy==1.23.3" in _DFC_VENV_DEPS
+    assert "scipy==1.10.1" in _DFC_VENV_DEPS
+
+
+def test_ensure_dfc_venv_refuses_an_interpreter_too_new_to_install_on(tmp_path, monkeypatch):
+    """A doomed install must fail on its first line, not after minutes of downloads."""
+    from sack_train_ml import hailo_pipeline as hp
+
+    wheel = tmp_path / "hailo_dataflow_compiler-3.33.1-py3-none-linux_x86_64.whl"
+    wheel.write_bytes(b"not a real wheel")
+
+    monkeypatch.setattr(hp, "_resolve_dfc_interpreter", lambda: "/usr/bin/python3.13")
+
+    created = []
+
+    def fake_run(cmd, *a, **kw):
+        # Match venv *creation* — `-m virtualenv -p <interp>` — and nothing else. An
+        # earlier version of this test asserted on the bare string "virtualenv" and
+        # tripped over the `pip install -q virtualenv` bootstrap, which runs
+        # legitimately before the interpreter is even chosen.
+        if "-m" in cmd and "virtualenv" in cmd and "-p" in cmd:
+            created.append(cmd)
+        import subprocess as sp
+        return sp.CompletedProcess(cmd, 0, stdout="3 13\n", stderr="")
+
+    monkeypatch.setattr(hp.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match=r"needs python 3\.11 or 3\.10, got 3\.13"):
+        hp.ensure_dfc_venv(wheel, venv_dir=tmp_path / "venv")
+
+    assert not created, f"built a venv on a refused interpreter: {created}"
+
+
+def test_resolve_dfc_interpreter_prefers_an_installed_311_over_uv(monkeypatch):
+    from sack_train_ml import hailo_pipeline as hp
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda n: "/usr/bin/python3.11" if n == "python3.11" else None)
+    monkeypatch.setattr(hp, "_uv_fetch_python", lambda *a, **k: pytest.fail("uv called despite a local 3.11"))
+    assert hp._resolve_dfc_interpreter() == "/usr/bin/python3.11"
+
+
+def test_resolve_dfc_interpreter_falls_back_to_uv_then_warns(monkeypatch, capsys):
+    """On Colab there is no python3.11 to find, so uv is the path that has to work.
+    When even that fails the fallback must say so out loud — the silent version of
+    this line is what made the original failure unreadable."""
+    from sack_train_ml import hailo_pipeline as hp
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda n: "/usr/bin/python3" if n == "python3" else None)
+
+    monkeypatch.setattr(hp, "_uv_fetch_python", lambda *a, **k: "/opt/uv/python3.11")
+    assert hp._resolve_dfc_interpreter() == "/opt/uv/python3.11"
+    assert "uv-provided" in capsys.readouterr().out
+
+    monkeypatch.setattr(hp, "_uv_fetch_python", lambda *a, **k: None)
+    assert hp._resolve_dfc_interpreter() == "/usr/bin/python3"
+    assert "WARNING" in capsys.readouterr().out

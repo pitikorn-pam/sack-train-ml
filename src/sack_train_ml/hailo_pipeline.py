@@ -54,21 +54,86 @@ def _venv_python(venv_dir: str | Path) -> Path:
     return py if py.exists() else venv_dir / "Scripts" / "python.exe"
 
 
+#: Highest Python every DFC pin publishes a linux wheel for. Measured against PyPI
+#: on 2026-09-08, not inferred: numpy==1.23.3 and scipy==1.10.1 ship cp38-cp311, and
+#: DFC 3.33.1's own scipy==1.12.0 pin stops at cp312. Above this, pip falls back to
+#: building all three from sdist and dies with `metadata-generation-failed`.
+DFC_PYTHON = "3.11"
+
+
+def _uv_fetch_python(version: str = DFC_PYTHON) -> str | None:
+    """Get a standalone CPython ``version`` via uv, or None if uv cannot supply it.
+
+    Preferred over apt/deadsnakes because it needs no sudo, no PPA and no knowledge
+    of the host distro — which matters most on Colab, where the runtime image moves
+    without notice and is the reason this function exists at all.
+    """
+    import json
+    import shutil
+
+    uv = shutil.which("uv")
+    if uv is None:
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "uv"],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            return None
+        uv = shutil.which("uv") or str(Path(sys.executable).parent / "uv")
+        if not Path(uv).exists():
+            return None
+
+    if subprocess.run([uv, "python", "install", version],
+                      capture_output=True, text=True).returncode != 0:
+        return None
+
+    # `uv python find` prints the interpreter path; older uv lacks it, so fall back
+    # to parsing the machine-readable listing rather than guessing a layout.
+    r = subprocess.run([uv, "python", "find", version], capture_output=True, text=True)
+    cand = r.stdout.strip()
+    if r.returncode == 0 and cand and Path(cand).exists():
+        return cand
+
+    r = subprocess.run([uv, "python", "list", "--output-format", "json"],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        try:
+            for entry in json.loads(r.stdout):
+                path = entry.get("path")
+                if path and entry.get("version", "").startswith(version) and Path(path).exists():
+                    return path
+        except (ValueError, AttributeError):
+            pass
+    return None
+
+
 def _resolve_dfc_interpreter() -> str:
     """Pick the interpreter to build the DFC venv on.
 
-    DFC pins ``numpy==1.23.3``, which has no wheel for Python 3.12+ and fails to
-    build from sdist. Colab's bare ``python3`` is 3.12, so probe for a 3.10/3.11
-    interpreter first and fall back to ``python3`` / ``sys.executable`` only if
-    none is found. Returns the interpreter path/name to pass to ``virtualenv -p``.
+    Order: an already-installed 3.11/3.10, then a standalone 3.11 fetched by uv,
+    then whatever ``python3`` is — which is a last resort that will probably fail,
+    so it warns rather than pretending.
+
+    The fallback used to be silent, and that is what made this hard to read from a
+    log: on a Colab runtime that had moved to 3.13 the venv was built anyway, every
+    install inside it failed, and the first error a reader saw was a scipy build
+    error forty lines down with no mention of the interpreter that caused it.
     """
     import shutil
 
-    for name in ("python3.10", "python3.11", "python3"):
+    for name in (f"python{DFC_PYTHON}", "python3.10"):
         found = shutil.which(name)
         if found:
             return found
-    return sys.executable
+
+    fetched = _uv_fetch_python()
+    if fetched:
+        print(f"[dfc] no local python{DFC_PYTHON}/3.10 — using uv-provided {fetched}")
+        return fetched
+
+    fallback = shutil.which("python3") or sys.executable
+    print(f"[dfc] WARNING: no python{DFC_PYTHON}/3.10 and uv could not supply one; "
+          f"falling back to {fallback}. If that is 3.12+ the DFC install WILL fail "
+          f"on numpy/scipy sdist builds.")
+    return fallback
 
 
 def _has_dfc(py: Path) -> bool:
@@ -117,8 +182,18 @@ def ensure_dfc_venv(wheel_path: str | Path, venv_dir: str | Path = "/content/hai
         major, minor = 0, 0
     print(f"[dfc] building venv on interpreter {interp} (python {major}.{minor})")
     if (major, minor) >= (3, 12):
-        print(f"[dfc] WARNING: interpreter is python {major}.{minor}; DFC pins numpy==1.23.3 which "
-              f"has no wheel for py3.12+ and may fail to build. Install python3.10/3.11 to avoid this.")
+        # Refuse rather than warn. This install cannot succeed — numpy==1.23.3,
+        # scipy==1.10.1 and DFC's own scipy==1.12.0 have no wheel this high, so pip
+        # builds each from sdist and fails — and the old warning was followed by
+        # minutes of downloads ending in a scipy build error that never mentioned
+        # the interpreter. Stopping here puts the cause in the first line.
+        raise RuntimeError(
+            f"DFC venv needs python {DFC_PYTHON} or 3.10, got {major}.{minor} ({interp}). "
+            f"numpy==1.23.3 and scipy==1.10.1 publish wheels up to 3.11 only, so this "
+            f"install would fail building them from source. Install python{DFC_PYTHON} "
+            f"(or let uv fetch it — `pip install uv && uv python install {DFC_PYTHON}`) "
+            f"and re-run."
+        )
     subprocess.run([sys.executable, "-m", "virtualenv", "-p", interp, str(venv_dir)],
                    check=True)
     pip = venv_dir / "bin" / "pip"
