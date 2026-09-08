@@ -48,17 +48,54 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
     if (error) throw error;
     if (!data?.upload_url || !data?.r2_key) throw new Error("invalid response from upload-dataset");
 
-    // PUT to R2 presigned URL
-    const res = await fetch(data.upload_url, {
-      method: "PUT",
-      headers: { "Content-Type": kind === "yaml" ? "application/x-yaml" : "application/zip" },
-      body: file,
-    });
+    // PUT to R2 presigned URL.
+    //
+    // A throw here (rather than a non-ok response) means the browser never got a
+    // reply — and its message is the bare "Failed to fetch", which names neither the
+    // step nor the host. Reaching R2 from a page is a cross-origin PUT carrying a
+    // Content-Type, so it is preflighted, and R2 answers the OPTIONS only when the
+    // bucket has a CORS policy allowing this origin. That is the usual cause, and it
+    // is a bucket setting, not a code change — so say so here instead of making the
+    // next reader re-derive it from the absence of a status code.
+    let res: Response;
+    try {
+      res = await fetch(data.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": kind === "yaml" ? "application/x-yaml" : "application/zip" },
+        body: file,
+      });
+    } catch (e: any) {
+      const host = safeHost(data.upload_url);
+      throw new Error(
+        `could not reach R2 at ${host} to upload the file (${e?.message ?? e}). ` +
+        `The presigned URL was issued, so this is the upload itself failing — ` +
+        `most often the bucket's CORS policy not allowing PUT from ${location.origin}.`
+      );
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`R2 PUT failed (${res.status}): ${text}`);
     }
     return data.r2_key;
+  }
+
+  /**
+   * Clear a slot so a different file can be chosen.
+   *
+   * This is its own path rather than `handleSelect(kind, null)`, which is what the
+   * "change" button used to call: `handleSelect` opens with `if (!file) return`
+   * (the file picker's own cancel case), so the button was inert — a visible
+   * control that could not do the one thing it named. The parent has to be told
+   * too, or a successful upload's r2_key survives the file being taken away.
+   */
+  function handleReset(kind: "yaml" | "zip") {
+    if (kind === "yaml") {
+      setYaml(emptySlot());
+      onChange({ yamlKey: null, bundleKey: bundle.r2_key, yamlText: null });
+    } else {
+      setBundle(emptySlot());
+      onChange({ yamlKey: yaml.r2_key, bundleKey: null, yamlText: null });
+    }
   }
 
   async function handleSelect(kind: "yaml" | "zip", file: File | null) {
@@ -96,6 +133,7 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
         accept=".yaml,.yml"
         slot={yaml}
         onSelect={(f) => handleSelect("yaml", f)}
+        onReset={() => handleReset("yaml")}
       />
       <Slot
         kind="zip"
@@ -104,6 +142,7 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
         accept=".zip"
         slot={bundle}
         onSelect={(f) => handleSelect("zip", f)}
+        onReset={() => handleReset("zip")}
         optional
       />
     </div>
@@ -117,9 +156,10 @@ function Slot(props: {
   accept: string;
   slot: FileSlot;
   onSelect: (f: File | null) => void;
+  onReset: () => void;
   optional?: boolean;
 }) {
-  const { icon, label, accept, slot, onSelect, optional } = props;
+  const { icon, label, accept, slot, onSelect, onReset, optional } = props;
   return (
     <div className="uploader-row">
       <strong>{icon} {label}{optional && <> <span className="muted">(opt)</span></>}</strong>
@@ -150,7 +190,7 @@ function Slot(props: {
             <span className="uploader-status err"><X size={12} /> {slot.error}</span>
           )}
           {!slot.uploading && (
-            <button type="button" className="link-button" onClick={() => onSelect(null)}>
+            <button type="button" className="link-button" onClick={onReset}>
               change
             </button>
           )}
@@ -158,6 +198,15 @@ function Slot(props: {
       )}
     </div>
   );
+}
+
+/** Host only — a presigned URL's query string carries the signature, so never show it. */
+export function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "the storage host";
+  }
 }
 
 function emptySlot(): FileSlot {

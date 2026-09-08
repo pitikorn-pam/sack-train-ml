@@ -88,6 +88,25 @@ cp .env.example .env.local && $EDITOR .env.local  # VITE_SUPABASE_*
 npm install && npm run dev   # → http://localhost:5173
 ```
 
+**Serve it on 5173.** Not a style preference — the dataset uploader has the browser PUT
+straight to R2 on a presigned URL, so the page's origin has to be in that bucket's CORS
+allowlist, and the allowlist holds `localhost:5173` and `127.0.0.1:5173` only. Start the
+dev server on any other port and every upload fails with a bare `Failed to fetch`, which
+names neither the port nor the policy. Verify an origin without guessing:
+
+```bash
+curl -sD - -o /dev/null -X OPTIONS \
+  "https://$R2_BUCKET.$R2_ACCOUNT_ID.r2.cloudflarestorage.com/probe" \
+  -H "Origin: http://localhost:5173" \
+  -H "Access-Control-Request-Method: PUT" | grep -i "^HTTP/\|allow-origin"
+# 204 + access-control-allow-origin → that origin may upload; 403 → it may not.
+```
+
+Deploying the dashboard to a real hostname means adding that origin to the bucket's CORS
+policy too (Cloudflare dashboard → R2 → the bucket → Settings → CORS Policy). The R2 token
+in `.env` is object-scoped and **cannot** read or write that policy, so this is a dashboard
+task, not a scriptable one.
+
 Inside the dashboard:
 1. Sign in with a username and password (a bare username is suffixed `@ipassion.co.th`).
 2. **New run** → fill config JSON (dataset R2 key + classes + hyperparams) → submit.
