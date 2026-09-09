@@ -32,3 +32,11 @@ apps/web/tsconfig.tsbuildinfo
 # Git worktrees live here. `git worktree list` already tracks them; committing the
 # directory would nest a checkout inside the repository.
 .claude/worktrees/
+
+# Model weights, wherever they land. A compiled .hef is tens of MB and a trained
+# .pt/.onnx more; the registry (R2 + the versions table) is where artifacts live, and
+# a weight in git is the one mistake that cannot be undone by a later commit. This
+# catches the common case of downloading one into the repo root to inspect it.
+*.hef
+*.onnx
+*.pt
