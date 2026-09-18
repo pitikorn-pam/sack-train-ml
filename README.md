@@ -39,8 +39,9 @@ BSCP sack detector training pipeline — YOLO 11s → ONNX → Hailo HEF, orches
                          ▲
                          │
         Colab notebook ──┘
-        (reads ?run_id=, prompts service-role key,
-         runs scripts/train_for_run.py)
+        (reads ?run_id=, prompts service-role key
+         + TRAINING_CALLBACK_SECRET, then runs
+         scripts/train_for_run.py)
                          │
                          ▼
                  Hailo HEF released
