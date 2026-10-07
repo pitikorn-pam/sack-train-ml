@@ -100,3 +100,98 @@ def test_the_callback_still_requires_a_signature(client_source):
     and the notebook prompt should be revisited rather than left as cargo."""
     assert "TRAINING_CALLBACK_SECRET is not set" in client_source
     assert "hmac" in client_source.lower()
+
+
+def test_roboflow_key_is_hidden_and_never_exported(notebook_source):
+    assert "userdata.get('ROBOFLOW_API_KEY')" in notebook_source
+    assert "getpass('ROBOFLOW_API_KEY: ')" in notebook_source
+    assert not re.search(r"os\.environ\[(['\"])ROBOFLOW_API_KEY\1\]", notebook_source)
+    assert "prepare_dataset(run['config_yaml']['dataset_source'], key, destination)" in notebook_source
+    assert "key = None" in notebook_source
+    assert "A manual DATASET_SOURCE cannot override a Roboflow run" in notebook_source
+
+
+def test_notebook_python_syntax_without_executing_cells():
+    import ast
+    nb = json.loads(NOTEBOOK.read_text())
+    for i, cell in enumerate(nb['cells']):
+        if cell['cell_type'] != 'code':
+            continue
+        source = ''.join(cell['source'])
+        # IPython shell/magic lines are parsed separately, never executed.
+        python = '\n'.join(line for line in source.splitlines() if not line.lstrip().startswith(('!', '%')))
+        ast.parse(python, filename=f'notebook-cell-{i}')
+        assert cell['outputs'] == [] and cell['execution_count'] is None
+    prepare = ''.join(nb['cells'][13]['source'])
+    assert '/content/datasets' in prepare and "'dataset_source'" in prepare
+
+
+def test_notebook_sync_import_fragment_replaces_cached_package_and_submodules(tmp_path, monkeypatch):
+    import ast
+    import importlib
+    import sys
+    from types import ModuleType
+    nb = json.loads(NOTEBOOK.read_text())
+    sync = next(''.join(c['source']) for c in nb['cells']
+                if c['cell_type'] == 'code' and 'pip install -e failed' in ''.join(c['source']))
+    # Execute only the actual post-install import fragment, never git/pip or a cell.
+    tree = ast.parse(sync)
+    start = next(i for i, n in enumerate(tree.body)
+                 if isinstance(n, ast.Import) and any(a.name == 'importlib' for a in n.names))
+    fragment = ast.fix_missing_locations(ast.Module(body=tree.body[start:], type_ignores=[]))
+    package = tmp_path / 'sack_train_ml'
+    package.mkdir()
+    (package / '__init__.py').write_text('REVISION = "synced"\n')
+    (package / 'roboflow.py').write_text('REVISION = "synced"\n')
+    nested = package / 'nested'
+    nested.mkdir()
+    (nested / '__init__.py').write_text('REVISION = "synced"\n')
+    (nested / 'adapter.py').write_text('REVISION = "synced"\n')
+    names = ['sack_train_ml', 'sack_train_ml.roboflow', 'sack_train_ml.nested', 'sack_train_ml.nested.adapter']
+    original = {k: v for k, v in sys.modules.items() if k == 'sack_train_ml' or k.startswith('sack_train_ml.')}
+    stale = {}
+    neighbor = ModuleType('sack_train_ml_neighbor')
+    monkeypatch.setitem(sys.modules, neighbor.__name__, neighbor)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    try:
+        for name in original:
+            del sys.modules[name]
+        for name in names:
+            stale[name] = importlib.import_module(name)
+            stale[name].REVISION = 'cached-before-sync'
+        namespace = {'sys': sys}
+        exec(compile(fragment, 'offline-notebook-import-fragment', 'exec'), namespace)
+        for name in names:
+            current = importlib.import_module(name)
+            assert current is not stale[name], f'{name} stayed cached across sync'
+            assert current.REVISION == 'synced'
+        assert sys.modules[neighbor.__name__] is neighbor
+    finally:
+        for name in list(sys.modules):
+            if name == 'sack_train_ml' or name.startswith('sack_train_ml.'):
+                del sys.modules[name]
+        sys.modules.update(original)
+
+
+def test_hidden_roboflow_secret_function_with_mocked_colab_and_getpass(monkeypatch):
+    import ast
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from unittest.mock import Mock
+    nb = json.loads(NOTEBOOK.read_text())
+    tree = ast.parse(''.join(nb['cells'][13]['source']))
+    function = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_roboflow_key')
+    module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+    hidden = Mock(return_value='mock-hidden-secret')
+    colab = ModuleType('google.colab')
+    reader = Mock(return_value='mock-colab-secret')
+    colab.userdata = SimpleNamespace(get=reader)
+    monkeypatch.setitem(sys.modules, 'google.colab', colab)
+    namespace = {'getpass': hidden}
+    exec(compile(module, 'mocked-secret-function', 'exec'), namespace)
+    assert namespace['_roboflow_key']() == 'mock-colab-secret'
+    reader.assert_called_once_with('ROBOFLOW_API_KEY')
+    hidden.assert_not_called()
+    reader.side_effect = RuntimeError('mock-only inaccessible secret')
+    assert namespace['_roboflow_key']() == 'mock-hidden-secret'
+    hidden.assert_called_once_with('ROBOFLOW_API_KEY: ')

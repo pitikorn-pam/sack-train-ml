@@ -13,7 +13,7 @@
  */
 import { useState } from "react";
 import { Upload, FileText, FileArchive, Check, X } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { type DatasetSelection, uploadDatasetFile } from "../lib/datasetUpload";
 
 interface FileSlot {
   file: File | null;
@@ -25,59 +25,13 @@ interface FileSlot {
 
 interface Props {
   modelLineSlug: string;
-  onChange: (state: {
-    yamlKey: string | null;
-    bundleKey: string | null;
-    yamlText: string | null;
-  }) => void;
+  onChange: (state: DatasetSelection) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function DatasetUploader({ modelLineSlug, onChange }: Props) {
+export function DatasetUploader({ modelLineSlug, onChange, onBusyChange }: Props) {
   const [yaml, setYaml] = useState<FileSlot>(emptySlot());
   const [bundle, setBundle] = useState<FileSlot>(emptySlot());
-
-  async function uploadFile(kind: "yaml" | "zip", file: File): Promise<string> {
-    const { data, error } = await supabase.functions.invoke("upload-dataset", {
-      body: {
-        filename: file.name,
-        model_line_slug: modelLineSlug,
-        kind,
-        content_type: kind === "yaml" ? "application/x-yaml" : "application/zip",
-      },
-    });
-    if (error) throw error;
-    if (!data?.upload_url || !data?.r2_key) throw new Error("invalid response from upload-dataset");
-
-    // PUT to R2 presigned URL.
-    //
-    // A throw here (rather than a non-ok response) means the browser never got a
-    // reply — and its message is the bare "Failed to fetch", which names neither the
-    // step nor the host. Reaching R2 from a page is a cross-origin PUT carrying a
-    // Content-Type, so it is preflighted, and R2 answers the OPTIONS only when the
-    // bucket has a CORS policy allowing this origin. That is the usual cause, and it
-    // is a bucket setting, not a code change — so say so here instead of making the
-    // next reader re-derive it from the absence of a status code.
-    let res: Response;
-    try {
-      res = await fetch(data.upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": kind === "yaml" ? "application/x-yaml" : "application/zip" },
-        body: file,
-      });
-    } catch (e: any) {
-      const host = safeHost(data.upload_url);
-      throw new Error(
-        `could not reach R2 at ${host} to upload the file (${e?.message ?? e}). ` +
-        `The presigned URL was issued, so this is the upload itself failing — ` +
-        `most often the bucket's CORS policy not allowing PUT from ${location.origin}.`
-      );
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`R2 PUT failed (${res.status}): ${text}`);
-    }
-    return data.r2_key;
-  }
 
   /**
    * Clear a slot so a different file can be chosen.
@@ -99,7 +53,11 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
   }
 
   async function handleSelect(kind: "yaml" | "zip", file: File | null) {
-    if (!file) return;
+    if (!file || yaml.uploading || bundle.uploading) return;
+    onBusyChange?.(true);
+    onChange(kind === "yaml"
+      ? { yamlKey: null, bundleKey: bundle.r2_key, yamlText: null }
+      : { yamlKey: yaml.r2_key, bundleKey: null, yamlText: null });
     const setter = kind === "yaml" ? setYaml : setBundle;
     setter({ file, r2_key: null, uploading: true, progress: 30, error: null });
 
@@ -110,7 +68,7 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
 
     try {
       setter((s) => ({ ...s, progress: 60 }));
-      const r2_key = await uploadFile(kind, file);
+      const r2_key = await uploadDatasetFile({ modelLineSlug, kind, file });
       setter({ file, r2_key, uploading: false, progress: 100, error: null });
 
       // Push state to parent — fetch the *current* sibling slot's r2_key
@@ -119,8 +77,11 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
       } else {
         onChange({ yamlKey: yaml.r2_key, bundleKey: r2_key, yamlText: null });
       }
-    } catch (e: any) {
-      setter({ file, r2_key: null, uploading: false, progress: 0, error: String(e?.message ?? e) });
+    } catch (error) {
+      setter({ file, r2_key: null, uploading: false, progress: 0,
+        error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      onBusyChange?.(false);
     }
   }
 
@@ -132,6 +93,7 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
         label="Dataset YAML"
         accept=".yaml,.yml"
         slot={yaml}
+        disabled={bundle.uploading}
         onSelect={(f) => handleSelect("yaml", f)}
         onReset={() => handleReset("yaml")}
       />
@@ -141,6 +103,7 @@ export function DatasetUploader({ modelLineSlug, onChange }: Props) {
         label="Image bundle (.zip)"
         accept=".zip"
         slot={bundle}
+        disabled={yaml.uploading}
         onSelect={(f) => handleSelect("zip", f)}
         onReset={() => handleReset("zip")}
         optional
@@ -158,6 +121,7 @@ function Slot(props: {
   onSelect: (f: File | null) => void;
   onReset: () => void;
   optional?: boolean;
+  disabled?: boolean;
 }) {
   const { icon, label, accept, slot, onSelect, onReset, optional } = props;
   return (
@@ -170,6 +134,7 @@ function Slot(props: {
           <input
             type="file"
             accept={accept}
+            disabled={props.disabled}
             onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
             style={{ display: "none" }}
           />
@@ -190,7 +155,7 @@ function Slot(props: {
             <span className="uploader-status err"><X size={12} /> {slot.error}</span>
           )}
           {!slot.uploading && (
-            <button type="button" className="link-button" onClick={onReset}>
+            <button type="button" className="link-button" disabled={props.disabled} onClick={onReset}>
               change
             </button>
           )}
@@ -198,15 +163,6 @@ function Slot(props: {
       )}
     </div>
   );
-}
-
-/** Host only — a presigned URL's query string carries the signature, so never show it. */
-export function safeHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return "the storage host";
-  }
 }
 
 function emptySlot(): FileSlot {

@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     git_sha = _current_git_sha(REPO_ROOT)
 
     # 1. Mark run as running + log start
-    config, run_row = client.load_run_config(run_id)
+    config, run_row = client.load_run_config(run_id, dataset_dir=args.dataset_dir)
     model_line_id = run_row["model_line_id"]
     client.mark_running(run_id)
 
@@ -201,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
             input_size=config.input_size,
             task=config.task,
             output_kind=config.output_kind,
+            dataset_source=config.dataset_source,
         )
         # Save bundle locally for QA
         bundle_dir = save_dir / "release"
@@ -213,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         metadata = {
+            "dataset_source": config.dataset_source,
             "class_names": config.classes,
             "input_size": config.input_size,
             "task": config.task,
@@ -299,6 +301,7 @@ def _write_effective_config(
             "hyperparameters": dict(getattr(config, "hyperparameters", {}) or {}),
             "classes": list(getattr(config, "classes", []) or []),
             "source_weights": getattr(config, "source_weights", None),
+            "dataset_source": getattr(config, "dataset_source", None),
         },
         "effective": effective,
         "environment": {
@@ -373,6 +376,7 @@ def _current_git_sha(root: Path) -> str | None:
 
 def _download_url(url: str, dest: Path) -> None:
     from urllib.request import urlopen
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     with urlopen(url, timeout=300) as r, open(dest, "wb") as f:
         while True:
@@ -516,7 +520,8 @@ def _materialize_dataset(
     Supports four forms:
       0. ``dataset_dir`` (``--dataset-dir`` / ``BSCP_DATASET_DIR``) points at an
          already-present dataset folder → use the ``data.yaml`` inside it and
-         skip every download. Overrides the run config.
+         skip every download. Overrides files configs; Roboflow requires a
+         prepared directory bound to the selected source and matching YAML names.
       1. ``config.dataset`` is a local path (used in dev/tests)
       2. ``config.dataset`` is ``datasets/...`` only → just the YAML (paths must
          already exist on disk; rare)
@@ -525,6 +530,12 @@ def _materialize_dataset(
          extracted root so its relative paths resolve.
     """
     from urllib.request import urlopen
+
+    if getattr(config, 'dataset_source', None):
+        from sack_train_ml.roboflow import resolve_prepared_config
+        raw = {'dataset_source': config.dataset_source, 'classes': config.classes}
+        resolved = resolve_prepared_config(raw, dataset_dir)
+        return Path(resolved['dataset'])
 
     if dataset_dir:
         root = Path(dataset_dir).expanduser().resolve()

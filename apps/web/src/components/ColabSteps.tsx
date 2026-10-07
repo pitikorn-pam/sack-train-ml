@@ -25,7 +25,7 @@ const STEPS = [
   },
   {
     title: "Confirm dataset",
-    body: "The notebook auto-downloads the dataset YAML from R2. If you uploaded an image ZIP, it unzips it too.",
+    body: "For Roboflow, Colab downloads directly using ROBOFLOW_API_KEY from Colab Secrets or hidden input, then reads class names from the YAML. For files, it downloads the YAML and optional ZIP from R2, or uses your local dataset override.",
   },
   {
     title: "Watch metrics stream here",

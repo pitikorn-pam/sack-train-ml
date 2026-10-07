@@ -126,11 +126,32 @@ class RegistryClient:
             raise RegistryError(f"run not found: {run_id}")
         return rows[0]
 
-    def load_run_config(self, run_id: str) -> tuple[RunConfig, dict[str, Any]]:
+    def load_run_config(self, run_id: str, dataset_dir: str | None = None) -> tuple[RunConfig, dict[str, Any]]:
         """Fetch run + parse config_yaml into RunConfig. Returns (config, raw_run)."""
         run = self.fetch_run(run_id)
-        config = RunConfig.from_dict(run.get("config_yaml") or {})
+        raw = run.get("config_yaml") or {}
+        config = RunConfig.from_dict(raw, prepared_dataset_dir=dataset_dir)
+        if config.dataset_source:
+            self.persist_resolved_classes(run_id, raw, config.classes)
         return config, run
+
+    def persist_resolved_classes(self, run_id: str, original: dict[str, Any], classes: list[str]) -> None:
+        """Checked optimistic update: preserve all fields and refuse concurrent changes."""
+        from urllib.parse import urlencode
+        from sack_train_ml.roboflow import validate_source, _has_credentials
+        validate_source(original.get('dataset_source'))
+        if _has_credentials(original):
+            raise RegistryError('Credentials must not be stored in run config.')
+        updated = {**original, 'classes': list(classes)}
+        query = urlencode({'id': f'eq.{run_id}', 'config_yaml': 'eq.' + json.dumps(original, separators=(',', ':')), 'select': 'id,config_yaml'})
+        try:
+            rows = self._rest('PATCH', '/rest/v1/runs?' + query, body={'config_yaml': updated},
+                              extra_headers={'Prefer': 'return=representation'})
+            if (not isinstance(rows, list) or len(rows) != 1 or rows[0].get('id') != run_id
+                    or rows[0].get('config_yaml') != updated):
+                raise RegistryError('No matching update.')
+        except Exception:
+            raise RegistryError('Could not persist resolved Roboflow classes; run changed or update was refused. Training has not started.') from None
 
     def patch_run(self, run_id: str, patch: dict[str, Any]) -> None:
         self._rest("PATCH", f"/rest/v1/runs?id=eq.{run_id}", body=patch)

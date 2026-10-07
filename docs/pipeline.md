@@ -21,7 +21,7 @@ dataset validate
 | # | Stage | Implementation | Streamed metric / log |
 |---|-------|----------------|----------------------|
 | 1 | Init | `train_for_run.py` boots, marks `runs.status = 'running'` | `log_step(1, "init", "info", ...)` |
-| 2 | Dataset materialize | `download-dataset` edge fn (if R2 key) → local path | `log_step(2, "dataset", "info", ...)` |
+| 2 | Dataset materialize | Files: `download-dataset` (if R2 key) or local override. Roboflow: checked directory prepared by the Colab notebook | `log_step(2, "dataset", "info", ...)` |
 | 3 | Dataset validate | `dataset.validate_dataset()` — count images/labels, class match | `log_step(2, "dataset", "ok", "...")` |
 | 4 | Train | `training.train_yolo()` with `on_fit_epoch_end` callback | per-epoch `log_metric` for every YOLO metric + synthetic `progress` |
 | 5 | Eval FP32 | `model.val()` | `log_step(4, "eval-fp32", "ok", "...")` |
@@ -32,6 +32,35 @@ dataset validate
 | 10 | Upload | `client.upload_artifact()` × 4 kinds → R2 PUT | `log_step(9, "upload", "ok", "Uploaded N artifacts")` |
 | 11 | Version row | `client.create_version()` — Postgres trigger fills `compat_signature` | `log_step(10, "version", "ok", "Version v1.0.0-... created")` |
 | 12 | Finalize | `client.finalize_run("succeeded")` via HMAC callback | finishes |
+
+## Dataset source contract
+
+Files requests retain `dataset` (string), optional `dataset_bundle`, and ordered
+`classes`. Roboflow creation requests contain only `dataset_source` with `kind:
+roboflow`, `workspace`, `project`, positive integer `version`, and `format: yolov8`
+or `yolov11`; they omit `dataset`, `dataset_bundle`, and `classes`.
+
+The web form parses the standard Python snippet locally as data and discards its
+API key and raw text. It does not call the Lab API or upload Roboflow datasets to
+R2. Manual YAML/ZIP uploads and saved datasets retain their R2 flow.
+
+`notebooks/train_run.ipynb` alone calls `sack_train_ml.roboflow.prepare_dataset`.
+It obtains `ROBOFLOW_API_KEY` from Colab Secrets with a hidden `getpass` fallback,
+keeps the key out of environment variables and subprocess arguments, and downloads
+under `/content/datasets/<run-id>/<attempt-id>/roboflow`. The adapter validates HTTPS
+hosts, redirects, archive sizes/paths, YAML hooks, and credentials before extraction.
+Errors suppress upstream HTTP details and chained exceptions.
+
+`RegistryClient.load_run_config(..., dataset_dir=...)` checks the non-secret source
+marker and YAML, resolves contiguous numeric class IDs (or list order), and checks
+`nc`. It persists only the resolved classes into the existing config with an
+optimistic, checked update that preserves other fields before training starts.
+Without the prepared matching directory, Roboflow execution fails; a manual
+override cannot silently replace it. `RunConfig` remains training-ready.
+
+The source and resolved classes appear in existing effective-config, release
+manifest, and version metadata. Model artifact publishing remains on R2.
+Local mocked tests do not deploy the cloud validator or publish the hosted notebook.
 
 ## Release bundle (on-disk + R2)
 

@@ -8,8 +8,9 @@
  * would launch a run against a dataset the operator thought they had taken away.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { DatasetUploader, safeHost } from './DatasetUploader'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { DatasetUploader } from './DatasetUploader'
+import { safeHost, type DatasetSelection } from '../lib/datasetUpload'
 
 afterEach(cleanup)
 
@@ -58,18 +59,31 @@ describe('DatasetUploader — the change button', () => {
     expect(last.yamlText).toBeNull()
   })
 
+  it('invalidates a previously selected dataset even when a new upload fails', async () => {
+    let selection: DatasetSelection = { yamlKey: 'dataset-A.yaml', bundleKey: 'dataset-A.zip', yamlText: null }
+    const onChange = vi.fn((state: DatasetSelection) => { selection = state })
+    const onBusyChange = vi.fn()
+    const { container } = render(<DatasetUploader modelLineSlug="sack" onChange={onChange} onBusyChange={onBusyChange} />)
+    fireEvent.change(inputs(container)[0], { target: { files: [yamlFile()] } })
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false))
+    expect(selection).toEqual({ yamlKey: null, bundleKey: null, yamlText: null })
+  })
+
   it('resets each slot independently', async () => {
     const onChange = vi.fn()
     const { container } = render(<DatasetUploader modelLineSlug="sack" onChange={onChange} />)
 
     const zip = new File(['PK'], 'images.zip', { type: 'application/zip' })
     fireEvent.change(inputs(container)[0], { target: { files: [yamlFile()] } })
+    // Uploads are serialized so one completion cannot overwrite the sibling key.
+    await screen.findByText('change')
     // A slot that holds a file stops rendering its input, so the ZIP slot's input is
     // now the only one left — re-query rather than reusing the earlier index.
     fireEvent.change(inputs(container)[0], { target: { files: [zip] } })
 
     // Reset the ZIP slot only; the YAML choice must survive it.
-    const changes = await screen.findAllByText('change')
+    await waitFor(() => expect(screen.getAllByText('change')).toHaveLength(2))
+    const changes = screen.getAllByText('change')
     fireEvent.click(changes[changes.length - 1])
 
     expect(screen.queryByText('images.zip')).toBeNull()

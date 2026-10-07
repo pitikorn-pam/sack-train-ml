@@ -7,6 +7,7 @@ import { ColabSteps } from "./ColabSteps";
 import { useToast } from "./Toast";
 import { ConfirmModal } from "./ConfirmModal";
 import { formatDateTime } from "../lib/format";
+import { datasetLabel } from '@contracts/dataset-source';
 
 const COLAB_URL = (runId: string) =>
   `https://colab.research.google.com/github/pitikorn-pam/sack-train-ml/blob/main/notebooks/train_run.ipynb?run_id=${runId}`;
@@ -214,12 +215,12 @@ export function RunDetail({
           <dt>Source weights</dt>
           <dd><code>{cfg.source_weights ?? "—"}</code></dd>
           <dt>Dataset</dt>
-          <dd><code>{cfg.dataset ?? "—"}</code></dd>
+          <dd><code>{datasetLabel(cfg)}</code></dd>
           <dt>Classes</dt>
           <dd>
             {(cfg.classes as string[] | undefined)?.map((c, i) => (
               <span key={c + i} className="chip">{i}: {c}</span>
-            )) ?? "—"}
+            )) ?? (cfg.dataset_source ? 'Resolved from YAML on Colab' : '—')}
           </dd>
           <dt>Input size</dt>
           <dd><code>{JSON.stringify(cfg.input_size)}</code></dd>

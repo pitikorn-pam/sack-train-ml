@@ -17,6 +17,7 @@
 // =============================================================================
 
 import schema from "../../../contracts/param-schema.json" with { type: "json" };
+import { datasetIssues, hasForbiddenCredentials } from '../../../contracts/dataset-source.ts';
 
 export type Category = "field" | "advanced" | "derived" | "refused";
 export type Level = "ok" | "warn" | "blocked";
@@ -98,15 +99,15 @@ export function resolveEffective(
 }
 
 /** Everything that must be true before a run may exist. */
-export function validateConfig(config: Record<string, unknown>): Issue[] {
-  const issues: Issue[] = [];
+export function validateConfig(value: unknown): Issue[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return [{ key: 'config', message: 'config must be an object.' }];
+  const config = value as Record<string, unknown>;
+  const issues: Issue[] = datasetIssues(config);
+  if (hasForbiddenCredentials(config)) return issues;
 
   const weights = String(config.source_weights ?? "");
   if (!weights) issues.push({ key: "source_weights", message: "source_weights is required." });
-  if (!config.dataset) issues.push({ key: "dataset", message: "dataset is required." });
-  const classes = config.classes;
-  if (!Array.isArray(classes) || classes.length === 0)
-    issues.push({ key: "classes", message: "classes must be a non-empty list." });
 
   // A path this project knows is broken must be refused, not cautioned: those
   // compile successfully and then count zero on the device.

@@ -8,6 +8,7 @@
  * than a blank one, because it looks like the previous run.
  */
 import { schema, paramsFor, parseCheckpoint, SIZES } from "./schema";
+import { parseRoboflowSource, type RoboflowSource } from '@contracts/dataset-source';
 
 export type Prefill = {
   family: string;
@@ -15,6 +16,7 @@ export type Prefill = {
   task: string;
   runName: string;
   datasetKey: string;
+  datasetSource: RoboflowSource | null;
   bundleKey: string | null;
   classes: string[];
   values: Record<string, string>;
@@ -38,6 +40,7 @@ export function emptyPrefill(): Prefill {
     task: "detect",
     runName: `sack-${new Date().toISOString().slice(0, 10)}`,
     datasetKey: "",
+    datasetSource: null,
     bundleKey: null,
     classes: ["person", "sack"],
     values: FIELD_DEFAULTS(),
@@ -93,15 +96,21 @@ export function prefillFromConfig(config: Record<string, unknown> | null | undef
     : base.classes;
 
   const rawName = typeof config.run_name === "string" && config.run_name ? config.run_name : base.runName;
+  let datasetSource: RoboflowSource | null = null;
+  if ('dataset_source' in config) {
+    try { datasetSource = parseRoboflowSource(config.dataset_source); }
+    catch { notRestored.push('Invalid Roboflow reference was dropped; select a dataset again.'); }
+  }
 
   return {
     family: ck.exact ? ck.family : base.family,
     size: ck.exact && (SIZES as readonly string[]).includes(ck.size) ? ck.size : base.size,
     task: ck.exact ? ck.task : base.task,
     runName: `${rawName} (re-run)`,
-    datasetKey: typeof config.dataset === "string" ? config.dataset : "",
-    bundleKey: typeof config.dataset_bundle === "string" ? config.dataset_bundle : null,
-    classes,
+    datasetKey: 'dataset_source' in config ? '' : typeof config.dataset === "string" ? config.dataset : "",
+    datasetSource,
+    bundleKey: 'dataset_source' in config ? null : typeof config.dataset_bundle === "string" ? config.dataset_bundle : null,
+    classes: 'dataset_source' in config ? [] : classes,
     values,
     advanced: Object.keys(extra).length ? JSON.stringify(extra, null, 2) : "{}",
     compile: co.compile_hef === true,

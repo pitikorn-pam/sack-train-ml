@@ -31,8 +31,8 @@ class RunConfig:
     """The training configuration loaded from a Supabase ``runs`` row.
 
     All fields are sourced from ``runs.config_yaml`` JSONB. The Python loader
-    is permissive — missing optional keys default to None; missing required
-    keys raise ``ValueError`` at load time.
+    requires resolved ordered classes. Roboflow rows need a matching prepared
+    Colab directory before construction; unresolved configs never reach training.
     """
 
     # Required ---------------------------------------------------------------
@@ -53,15 +53,28 @@ class RunConfig:
     # other key rather than ignoring it.
     compile_options: dict[str, Any] = field(default_factory=dict)
     dataset_bundle: str | None = None
+    dataset_source: dict[str, Any] | None = None
     dataset_stats: dict[str, Any] = field(default_factory=dict)
     logs: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "RunConfig":
+    def from_dict(cls, d: dict[str, Any], prepared_dataset_dir: str | None = None) -> "RunConfig":
+        from sack_train_ml.roboflow import _has_credentials, resolve_prepared_config
+        if _has_credentials(d):
+            raise ValueError("Credentials and snippets must not be stored in RunConfig.")
+        if 'dataset_source' in d:
+            d = resolve_prepared_config(d, prepared_dataset_dir)
         required = ["source_weights", "dataset", "classes", "input_size", "task", "output_kind"]
         missing = [k for k in required if k not in d]
         if missing:
             raise ValueError(f"RunConfig missing required keys: {missing}")
+        if not isinstance(d['dataset'], str) or not d['dataset'].strip():
+            raise ValueError("RunConfig dataset must be a non-empty string.")
+        if (not isinstance(d['classes'], list) or not d['classes']
+                or not all(isinstance(n, str) and n.strip() for n in d['classes'])):
+            raise ValueError("RunConfig classes must be a non-empty ordered list.")
+        if d.get('dataset_bundle') is not None and (not isinstance(d['dataset_bundle'], str) or not d['dataset_bundle'].strip()):
+            raise ValueError("RunConfig dataset_bundle must be a non-empty string.")
         return cls(
             source_weights=d["source_weights"],
             dataset=d["dataset"],
@@ -73,6 +86,7 @@ class RunConfig:
             export_options=dict(d.get("export_options", {})),
             compile_options=dict(d.get("compile_options", {})),
             dataset_bundle=d.get("dataset_bundle"),
+            dataset_source=d.get("dataset_source"),
             dataset_stats=dict(d.get("dataset_stats", {})),
             logs=list(d.get("logs", [])),
         )
@@ -123,6 +137,7 @@ class ReleaseManifest:
     input_size: list[int] = field(default_factory=list)
     task: str = ""
     output_kind: str = ""
+    dataset_source: dict[str, Any] | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=True)

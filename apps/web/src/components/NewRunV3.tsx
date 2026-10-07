@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { supabase, type ModelLine } from "../lib/supabase";
 import { useEffect } from "react";
 import { Hint } from "./Hint";
-import { DatasetUploader } from "./DatasetUploader";
+import { DatasetInput } from "./DatasetInput";
 import { ColabSteps } from "./ColabSteps";
 import { useToast } from "./Toast";
 import { parseYoloYaml } from "../lib/yaml";
@@ -30,6 +30,7 @@ import {
   type Param, type Source,
 } from "../lib/schema";
 import { prefillFromConfig } from "../lib/prefill";
+import { datasetIssues, datasetLabel, type RoboflowSource, type DatasetRequest } from '@contracts/dataset-source';
 
 const SOURCE_LABEL: Record<Source, string> = {
   set: "you set it",
@@ -110,6 +111,7 @@ export function NewRunV3({
   const [runName, setRunName] = useState(seed.runName);
 
   const [datasetKey, setDatasetKey] = useState(seed.datasetKey);
+  const [datasetSource, setDatasetSource] = useState<RoboflowSource | null>(seed.datasetSource);
   const [bundleKey, setBundleKey] = useState<string | null>(seed.bundleKey);
   const [classes, setClasses] = useState<string[]>(seed.classes);
 
@@ -121,7 +123,8 @@ export function NewRunV3({
   const [profiles, setProfiles] = useState<RunProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<RunProfile | null>(null);
   const [datasets, setDatasets] = useState<DataAsset[]>([]);
-  const [uploadNew, setUploadNew] = useState(false);
+  const [uploadNew, setUploadNew] = useState(!!seed.datasetSource);
+  const [datasetBusy, setDatasetBusy] = useState(false);
   const [assetsReady, setAssetsReady] = useState(true);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ runId: string; colabUrl: string } | null>(null);
@@ -155,6 +158,25 @@ export function NewRunV3({
     });
   }
 
+  async function chooseSavedDataset(key: string) {
+    const d = datasets.find(x => x.manifest_key === key);
+    setDatasetSource(null); setDatasetKey(''); setBundleKey(null); setClasses([]); setUploadNew(false);
+    if (!d?.manifest_key) return;
+    setDatasetBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('download-dataset', { body: { r2_key: d.manifest_key } });
+      const result: unknown = data;
+      if (error || !result || typeof result !== 'object' || !('download_url' in result) || typeof result.download_url !== 'string') throw new Error('Could not read saved dataset.');
+      const response = await fetch(result.download_url);
+      if (!response.ok) throw new Error('Could not read saved dataset YAML.');
+      const names = parseYoloYaml(await response.text()).names;
+      if (!names.length) throw new Error('Saved dataset YAML has no class names.');
+      setDatasetKey(d.manifest_key); setBundleKey(d.bundle_key); setClasses(names);
+    } catch {
+      push({ tone: 'danger', title: 'Could not select dataset', detail: 'Check access to its YAML and class names, then retry.' });
+    } finally { setDatasetBusy(false); }
+  }
+
   async function saveAsProfile() {
     if (!modelLineId) return;
     const name = window.prompt("Name this profile", activeProfile?.display_name ?? "");
@@ -177,7 +199,7 @@ export function NewRunV3({
   const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }));
 
   const derived: Record<string, string> = {
-    classes: classes.join(", "),
+    classes: datasetSource ? 'Resolved from YAML on Colab' : classes.join(", "),
     input_shape: `${values.imgsz} × ${values.imgsz} × 3`,
     regression_length: family === "yolo11" && task === "detect" ? "16" : "—",
     compiler_profile: capability.profile,
@@ -198,7 +220,11 @@ export function NewRunV3({
 
   const issues = validate(values, capability);
   if (advancedIssue) issues.push({ key: "advanced", level: "blocking", message: advancedIssue });
-  if (!datasetKey) issues.push({ key: "dataset", level: "blocking", message: "A dataset is required." });
+  const datasetRequest: DatasetRequest = datasetSource
+    ? { dataset_source: datasetSource }
+    : { dataset: datasetKey, classes, ...(bundleKey ? { dataset_bundle: bundleKey } : {}) };
+  for (const issue of datasetIssues(datasetRequest)) issues.push({ ...issue, level: 'blocking' });
+  if (datasetBusy) issues.push({ key: "dataset", level: "blocking", message: "Wait for the dataset import/upload to finish." });
   const blocking = issues.filter((i) => i.level === "blocking");
   const warnings = issues.filter((i) => i.level === "warning");
 
@@ -211,7 +237,7 @@ export function NewRunV3({
     "# effective config — resolved here; ultralytics fills the rest inside the run",
     `${"model:".padEnd(24)}${checkpoint}`,
     `${"task:".padEnd(24)}${task}`,
-    `${"data:".padEnd(24)}${datasetKey || "—"}`,
+    `${"data:".padEnd(24)}${datasetLabel(datasetRequest)}`,
     ...effective.map(
       (e) => `${(e.key + ":").padEnd(24)}${e.value.padEnd(22)}# ${SOURCE_LABEL[e.source]}`,
     ),
@@ -224,8 +250,7 @@ export function NewRunV3({
     try {
       const config = {
         source_weights: checkpoint,
-        dataset: datasetKey,
-        classes,
+        ...datasetRequest,
         input_size: [Number(values.imgsz), Number(values.imgsz), 3],
         task: task === "detect" ? "detection" : task,
         // Required by RunConfig and by the version's compat signature — a config
@@ -244,16 +269,17 @@ export function NewRunV3({
               ]),
             }
           : {}),
-        ...(bundleKey ? { dataset_bundle: bundleKey } : {}),
         run_name: runName,
       };
       const { data, error } = await supabase.functions.invoke("start-training", {
         body: { model_line_slug: slug, config },
       });
       if (error) throw error;
-      if (!data?.run_id) throw new Error("no run_id in response");
+      const response: unknown = data;
+      if (!response || typeof response !== 'object' || !('run_id' in response) || typeof response.run_id !== 'string'
+          || !('colab_url' in response) || typeof response.colab_url !== 'string') throw new Error('Invalid start-training response.');
       push({ tone: "success", title: "Run created", detail: runName });
-      setCreated({ runId: data.run_id, colabUrl: data.colab_url });
+      setCreated({ runId: response.run_id, colabUrl: response.colab_url });
     } catch (e) {
       push({ tone: "danger", title: "Could not create run", detail: (e as Error).message });
     } finally {
@@ -380,11 +406,8 @@ export function NewRunV3({
               </span>
               <select
                 value={datasetKey}
-                onChange={(e) => {
-                  const d = datasets.find((x) => x.manifest_key === e.target.value);
-                  setDatasetKey(e.target.value);
-                  setBundleKey(d?.bundle_key ?? null);
-                }}
+                disabled={datasetBusy}
+                onChange={(e) => { void chooseSavedDataset(e.target.value); }}
               >
                 <option value="">— pick a dataset —</option>
                 {datasets.map((d) => (
@@ -397,27 +420,44 @@ export function NewRunV3({
             </label>
           )}
 
-          <button className="pv3-disclose" onClick={() => setUploadNew((u) => !u)}>
-            {uploadNew ? "▾" : "▸"} {datasets.length > 0 ? "Upload a new dataset instead" : "Upload a dataset"}
-          </button>
+          {datasets.length > 0 && (
+            <button className="pv3-disclose" disabled={datasetBusy} onClick={() => {
+              setUploadNew((u) => !u);
+              setDatasetKey("");
+              setDatasetSource(null);
+              setBundleKey(null);
+              setClasses([]);
+            }}>
+              {uploadNew ? "▾" : "▸"} Add a new dataset instead
+            </button>
+          )}
 
           {(uploadNew || datasets.length === 0) && (
-            <DatasetUploader
+            <DatasetInput
               modelLineSlug={slug}
-              onChange={(s: { yamlKey: string | null; bundleKey: string | null; yamlText: string | null }) => {
-                if (s.yamlKey) setDatasetKey(s.yamlKey);
-                if (s.bundleKey !== null) setBundleKey(s.bundleKey);
-                if (s.yamlText) {
+              initialSource={datasetSource}
+              onBusyChange={setDatasetBusy}
+              onChange={(s) => {
+                setUploadNew(true);
+                if (s.kind === 'roboflow') {
+                  setDatasetSource(s.source); setDatasetKey(''); setBundleKey(null); setClasses([]);
+                  return;
+                }
+                setDatasetSource(null);
+                setDatasetKey(s.yamlKey ?? "");
+                setBundleKey(s.bundleKey);
+                if (!s.yamlKey) setClasses([]);
+                else if (s.classes) setClasses(s.classes);
+                else if (s.yamlText) {
                   try {
-                    const parsed = parseYoloYaml(s.yamlText);
-                    if (parsed.names.length) setClasses(parsed.names);
-                  } catch { /* best effort */ }
+                    setClasses(parseYoloYaml(s.yamlText).names);
+                  } catch { setClasses([]); }
                 }
               }}
             />
           )}
 
-          {uploadNew && datasetKey && modelLineId && (
+          {(uploadNew || datasets.length === 0) && datasetKey && modelLineId && !datasetBusy && (
             <button
               className="button"
               onClick={async () => {
@@ -532,7 +572,7 @@ export function NewRunV3({
             <dt>Run</dt><dd>{runName}</dd>
             <dt>Model</dt><dd>{fam.label} · {schema.taskLabels[task]}</dd>
             <dt>Checkpoint</dt><dd><code>{checkpoint}</code></dd>
-            <dt>Dataset</dt><dd>{datasetKey || <span className="muted">not chosen</span>}</dd>
+            <dt>Dataset</dt><dd>{datasetSource || datasetKey ? datasetLabel(datasetRequest) : <span className="muted">not chosen</span>}</dd>
             <dt>Classes</dt><dd>{derived.classes}</dd>
             <dt>Compile</dt><dd>{compile ? "Hailo-8L · enabled" : "disabled"}</dd>
           </dl>

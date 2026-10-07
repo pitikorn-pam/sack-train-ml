@@ -26,11 +26,9 @@ describe('parseYoloYaml', () => {
     expect(parseYoloYaml(yaml).names).toEqual(['person', 'sack'])
   })
 
-  it('fills a gap in a block map rather than shifting later classes down', () => {
-    // A hole would otherwise renumber every class after it, which mislabels the
-    // whole dataset instead of failing loudly.
+  it('rejects a gap in class IDs instead of inventing placeholder names', () => {
     const yaml = ['names:', '  0: person', '  2: sack'].join('\n')
-    expect(parseYoloYaml(yaml).names).toEqual(['person', 'class_1', 'sack'])
+    expect(() => parseYoloYaml(yaml)).toThrow()
   })
 
   it('picks up the split paths alongside the names', () => {
@@ -57,3 +55,7 @@ describe('parseYoloYaml', () => {
     expect(parseYoloYaml('').names).toEqual([])
   })
 })
+it('orders flow-map classes by numeric ID and rejects duplicate/gapped IDs', () => {
+  expect(parseYoloYaml('names: {1: sack, 0: person}').names).toEqual(['person', 'sack']);
+  for (const text of ['names: {0: person, 2: sack}', 'names: {0: person, 0: sack}', 'names:\n  0: person\n  0: sack']) expect(() => parseYoloYaml(text)).toThrow();
+});

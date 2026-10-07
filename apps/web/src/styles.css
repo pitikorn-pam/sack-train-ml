@@ -1107,6 +1107,14 @@ button svg, a svg { display: inline-block; vertical-align: middle; }
 .run-actions { display: flex; gap: var(--space-xs); flex-wrap: wrap; margin-top: var(--space-xs); }
 
 /* Dataset uploader */
+.dataset-source { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--space-sm); }
+.dataset-source .chip { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 7px 11px; border: 1px solid var(--color-hairline); border-radius: 8px; background: #fff; color: var(--color-ink); font-family: var(--font-sans); font-size: 13px; cursor: pointer; }
+.dataset-source .chip.on { background: var(--color-primary-soft); color: var(--color-primary-active); border-color: var(--color-primary); }
+.dataset-source .chip:disabled { opacity: .6; cursor: wait; }
+.roboflow-import { border: 1px solid var(--color-hairline); border-radius: var(--radius-lg); padding: var(--space-md); background: var(--color-surface-soft); }
+.roboflow-import textarea { width: 100%; min-height: 160px; font-family: var(--font-mono); font-size: var(--fs-code-inline); line-height: 1.6; }
+.roboflow-import .pv3-hint { margin: 8px 0 12px; }
+.roboflow-import .uploader-status { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .dataset-uploader {
   display: flex; flex-direction: column; gap: var(--space-sm);
   background: var(--color-surface-soft);
