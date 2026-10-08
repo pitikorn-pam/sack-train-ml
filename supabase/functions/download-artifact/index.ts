@@ -13,7 +13,7 @@ import { presignGet } from "../_shared/r2.ts";
 // Kinds must match _shared/artifacts.ts::ARTIFACT_EXTENSIONS. effective-config.json
 // was uploaded on every successful run and rejected here, which left the third
 // provenance layer — the only one that can name a value nobody chose — write-only.
-const KEY_RE = /^runs\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+\.(pt|onnx|hef|hef\.meta\.yaml|effective-config\.json)$/;
+const KEY_RE = /^runs\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+\.(pt|onnx|hef|hef\.meta\.yaml|effective-config\.json|compile-diagnostics\.zip)$/;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });

@@ -20,7 +20,7 @@
 // trainer actually held it, ultralytics' own defaults included. It is the only layer
 // that can name a value nobody chose — the class the Muon crash belonged to — so it
 // travels with the model rather than living only in the database.
-export type ArtifactKind = "pytorch" | "onnx" | "hef" | "hef_meta" | "effective_config";
+export type ArtifactKind = "pytorch" | "onnx" | "hef" | "hef_meta" | "effective_config" | "compile_diagnostics";
 
 export const ARTIFACT_EXTENSIONS: Record<ArtifactKind, string> = {
   pytorch: "pt",
@@ -28,6 +28,7 @@ export const ARTIFACT_EXTENSIONS: Record<ArtifactKind, string> = {
   hef: "hef",
   hef_meta: "hef.meta.yaml",
   effective_config: "effective-config.json",
+  compile_diagnostics: "compile-diagnostics.zip",
 };
 
 export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
@@ -36,6 +37,7 @@ export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
   hef: "application/octet-stream",
   hef_meta: "application/x-yaml",
   effective_config: "application/json",
+  compile_diagnostics: "application/zip",
 };
 
 export type ArtifactDetail = {

@@ -26,10 +26,10 @@ dataset validate
 | 4 | Train | `training.train_yolo()` with `on_fit_epoch_end` callback | per-epoch `log_metric` for every YOLO metric + synthetic `progress` |
 | 5 | Eval FP32 | `model.val()` | `log_step(4, "eval-fp32", "ok", "...")` |
 | 6 | Export ONNX | `export_onnx.export_onnx()` | `log_step(5, "export", "ok", "...")` |
-| 7 | Compile HEF | `hailo_pipeline.compile_hef()` via `hailomz` CLI | `log_step(6, "hef-compile", "ok"\|"warning", ...)` |
+| 7 | Compile HEF | `hailo_pipeline.compile_onnx_to_hef()` via isolated DFC ClientRunner subprocess, stage journal and diagnostics ZIP | `log_step(7, "compile", "ok"\|"error", ...)` |
 | 8 | Eval INT8 | best-effort hook (Phase 2 wires real HEF inference) | `log_step(7, "eval-int8", ...)` |
 | 9 | Gate | `evaluation.gate_check()` — FP32 vs INT8 mAP50 delta | `log_step(8, "gate", "ok"\|"warning", ...)` |
-| 10 | Upload | `client.upload_artifact()` × 4 kinds → R2 PUT | `log_step(9, "upload", "ok", "Uploaded N artifacts")` |
+| 10 | Upload | `client.upload_artifact()` → R2 PUT; compile diagnostics uses a unique attempt stem | `log_step(9, "upload", "ok", "Uploaded N artifacts")` |
 | 11 | Version row | `client.create_version()` — Postgres trigger fills `compat_signature` | `log_step(10, "version", "ok", "Version v1.0.0-... created")` |
 | 12 | Finalize | `client.finalize_run("succeeded")` via HMAC callback | finishes |
 
@@ -64,7 +64,7 @@ Local mocked tests do not deploy the cloud validator or publish the hosted noteb
 
 ## Release bundle (on-disk + R2)
 
-Locally written to `runs/{run_id}/release/`:
+Canonical names supported by `assemble_bundle` (files are copied only when passed by the caller):
 
 - `best.pt`
 - `model.onnx`
@@ -72,9 +72,12 @@ Locally written to `runs/{run_id}/release/`:
 - `model.hef.meta.yaml`
 - `eval-fp32.json`
 - `eval-int8.json` (if INT8 eval ran)
+- `compile-diagnostics.zip` (when a ready compile archive exists)
 - `release-manifest.json`
 
-Same artifacts uploaded to R2 under `runs/{run_id}/{semver}.{ext}` and registered in `versions.artifacts` JSONB.
+The current `train_for_run` local assembly passes PT, ONNX and the ready diagnostic ZIP. This feature does not add the other previously omitted local artifacts. Uploaded artifacts are recorded independently in `versions.artifacts`.
+
+Model artifacts uploaded to R2 under `runs/{run_id}/{semver}.{ext}` and registered in `versions.artifacts` JSONB. Diagnostics use `runs/{run_id}/{semver}-compile-{attempt_id}.compile-diagnostics.zip`; the version semver stays original.
 
 ## Failure paths
 
@@ -82,8 +85,12 @@ Same artifacts uploaded to R2 under `runs/{run_id}/{semver}.{ext}` and registere
 |---------|----------|
 | Dataset validation fails | `log_step("dataset", "error")` → `finalize_run("failed", error)` → notebook exits 1 |
 | YOLO train raises | `log_step("training", "error")` → `finalize_run("failed", error)` |
-| HEF compile fails | `log_step("hef-compile", "warning")` — rest of pipeline continues (artifact set will not include `hef`) |
+| HEF compile fails | `log_step("compile", "error")` — retain earlier HAR stages and upload ready diagnostics; partial PT/ONNX/version artifacts survive, requested run finalizes `failed` |
 | Upload fails | full failure path |
 | Callback HTTP 5xx | one auto-retry, then raise |
 
 Idempotency: `run_metrics` PK = `(run_id, step, name)` — re-running the same step overwrites (upsert).
+
+## Compile diagnostics retention
+
+Native/quantized HAR stages, measured calibration identities and compiler logs are retained in isolated attempts on success and partial failure. See [HAR retention and retrieval](compile-diagnostics.md). Real SDK reload, Colab Drive and live R2 persistence remain UNVERIFIED by offline tests.

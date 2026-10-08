@@ -26,6 +26,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from sack_train_ml.contracts import sha256_file
+from sack_train_ml import compile_diagnostics as diagnostics
 from sack_train_ml.hailo_pipeline import (
     build_calib_dir,
     compile_onnx_to_hef,
@@ -57,31 +58,54 @@ def main(argv: list[str] | None = None) -> int:
     if not a.calib_dir and not a.dataset_yaml:
         p.error("one of --calib-dir or --dataset-yaml is required")
 
-    venv_py = ensure_dfc_venv(a.wheel, a.venv_dir)
+    attempt = diagnostics.begin(Path(a.out_dir), run_id=None, semver=None, onnx=Path(a.onnx),
+                                requested={"model": a.net, "target": a.target,
+                                           "input_size": a.size, "classes": a.classes,
+                                           "calib_n": a.calib_n, "opt_level": a.opt_level,
+                                           "scores_th": a.scores_th, "iou_th": a.iou_th,
+                                           "max_per_class": a.max_per_class, "reg_len": a.reg_len})
+    try:
+        venv_py = ensure_dfc_venv(a.wheel, a.venv_dir)
 
-    if a.calib_dir:
-        calib_dir = Path(a.calib_dir)
-    else:
-        calib_dir = build_calib_dir(a.dataset_yaml, Path(a.out_dir) / "calib", n=a.calib_n)
+        if a.calib_dir:
+            calib_dir = Path(a.calib_dir)
+        else:
+            calib_dir = build_calib_dir(a.dataset_yaml, Path(a.out_dir) / "calib", n=a.calib_n)
 
-    onnx_sha, _ = sha256_file(a.onnx)
-    art = compile_onnx_to_hef(
-        onnx_path=a.onnx,
-        calib_dir=calib_dir,
-        out_dir=a.out_dir,
-        model_name=a.net,
-        venv_python=venv_py,
-        target=a.target,
-        input_size=a.size,
-        classes=a.classes,
-        calib_n=a.calib_n,
-        opt_level=a.opt_level,
-        scores_th=a.scores_th,
-        iou_th=a.iou_th,
-        max_per_class=a.max_per_class,
-        reg_len=a.reg_len,
-        source_onnx_sha=onnx_sha,
-    )
+        onnx_sha, _ = sha256_file(a.onnx)
+        art = compile_onnx_to_hef(
+            onnx_path=a.onnx,
+            calib_dir=calib_dir,
+            out_dir=a.out_dir,
+            model_name=a.net,
+            venv_python=venv_py,
+            target=a.target,
+            input_size=a.size,
+            classes=a.classes,
+            calib_n=a.calib_n,
+            opt_level=a.opt_level,
+            scores_th=a.scores_th,
+            iou_th=a.iou_th,
+            max_per_class=a.max_per_class,
+            reg_len=a.reg_len,
+            source_onnx_sha=onnx_sha,
+            attempt=attempt,
+        )
+    except diagnostics.RetentionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except diagnostics.CompileFailure as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        detail = diagnostics.sanitize(f"{type(exc).__name__}: {exc}")
+        try:
+            archive = diagnostics.finalize(attempt, returncode=None, stdout="", stderr=detail + "\n", error=detail)
+            print(f"{detail}\nDiagnostics: {archive.path}", file=sys.stderr)
+        except diagnostics.RetentionError as retention:
+            print(str(retention), file=sys.stderr)
+        return 1
+    print(f"Diagnostics: {art.diagnostics.path}")
     print(f"\nHEF:  {art.hef_path}")
     print(f"META: {art.hef_meta_path}")
     return 0

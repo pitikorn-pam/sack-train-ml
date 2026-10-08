@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import compile_diagnostics as diagnostics
 from .contracts import sha256_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -41,6 +42,7 @@ _DFC_VENV_DEPS = ["numpy==1.23.3", "scipy==1.10.1", "pillow", "onnx"]
 class HefArtifact:
     hef_path: Path
     hef_meta_path: Path
+    diagnostics: diagnostics.ReadyArchive
     quantization: dict[str, Any] = field(default_factory=dict)
 
 
@@ -295,6 +297,9 @@ def compile_onnx_to_hef(
     source_onnx_sha: str | None = None,
     git_sha: str | None = None,
     extra_meta: dict[str, Any] | None = None,
+    run_id: str | None = None,
+    semver: str | None = None,
+    attempt: diagnostics.Attempt | None = None,
 ) -> HefArtifact:
     """Run ONNX -> HEF via the DFC venv subprocess and write meta.yaml.
 
@@ -303,9 +308,15 @@ def compile_onnx_to_hef(
     the HEF is not produced.
     """
     onnx_path = Path(onnx_path)
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    hef_path = out / f"{model_name}.hef"
+    requested = {"model": model_name, "target": target, "input_size": input_size,
+                 "classes": classes, "calib_n": calib_n, "opt_level": opt_level,
+                 "scores_th": scores_th, "iou_th": iou_th,
+                 "max_per_class": max_per_class, "reg_len": reg_len, "git_sha": git_sha}
+    attempt = attempt or diagnostics.begin(Path(out_dir), run_id=run_id, semver=semver,
+                                           onnx=onnx_path, requested=requested)
+    diagnostics.attach(attempt.directory).inputs(requested=requested)
+    out = attempt.directory
+    hef_path = out / "model.hef"
 
     cmd = [
         str(venv_python), str(COMPILE_SCRIPT),
@@ -323,15 +334,30 @@ def compile_onnx_to_hef(
         "--iou-th", str(iou_th),
         "--max-per-class", str(max_per_class),
         "--reg-len", str(reg_len),
+        "--attempt-dir", str(out),
     ]
-    print("[compile]", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    if result.returncode != 0:
-        raise RuntimeError(f"DFC compile failed (exit {result.returncode}); see log above")
-    if not hef_path.exists():
-        raise FileNotFoundError(f"compile finished but {hef_path} not present")
+    result = None
+    error = None
+    stdout = stderr = ""
+    try:
+        source_identity = diagnostics.attach(out).verify_source(onnx_path, source_onnx_sha)
+        actual_sha = "sha256:" + source_identity["sha256"]
+        if Path(calib_dir).resolve() == out.resolve() or Path(calib_dir).resolve() in out.resolve().parents:
+            raise ValueError("attempt directory must be separate from calibration staging")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        stdout, stderr = result.stdout, result.stderr
+        if result.returncode != 0:
+            error = f"DFC compile failed (exit {result.returncode}): {diagnostics.sanitize(stderr, attempt.known_secrets)}"
+    except Exception as exc:
+        error = diagnostics.sanitize(f"{type(exc).__name__}: {exc}", attempt.known_secrets)
+        stderr += error + "\n"
+    archive = diagnostics.finalize(attempt, returncode=result.returncode if result else None,
+                                   stdout=stdout, stderr=stderr, error=error)
+    sys.stdout.write(diagnostics.sanitize(stdout, attempt.known_secrets))
+    sys.stderr.write(diagnostics.sanitize(stderr, attempt.known_secrets))
+    outcome = json.loads((out / "manifest.json").read_text())["outcome"]
+    if outcome["status"] != "succeeded":
+        raise diagnostics.CompileFailure(error or "compile exited without completed stage evidence", archive)
 
     # The compile script prints a ``DETECT {json}`` line with the auto-detected
     # head family + NMS mode; surface those in the meta so the edge knows whether
@@ -351,7 +377,7 @@ def compile_onnx_to_hef(
         "input_shape": [input_size, input_size, 3],
         "classes": classes,
         "source_onnx": onnx_path.name,
-        "source_onnx_sha256": source_onnx_sha,
+        "source_onnx_sha256": actual_sha,
         "git_sha": git_sha,
         "hef_size_bytes": size,
         "hef_sha256": sha,
@@ -368,12 +394,16 @@ def compile_onnx_to_hef(
     if extra_meta:
         meta.update(extra_meta)
     meta_path = out / f"{model_name}.hef.meta.yaml"
-    meta_path.write_text(_dump_simple_yaml(meta))
+    try:
+        meta_path.write_text(_dump_simple_yaml(meta))
+    except Exception as exc:
+        raise diagnostics.CompileFailure(f"HEF metadata write failed: {exc}", archive) from exc
     print("[compile] meta ->", meta_path)
 
     return HefArtifact(
         hef_path=hef_path,
         hef_meta_path=meta_path,
+        diagnostics=archive,
         quantization={
             "precision": "int8",
             "method": "dfc_clientrunner",

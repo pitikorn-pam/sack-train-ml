@@ -169,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         # 6b. Optional: compile INT8 .hef in-session (gated by compile_options).
         # A failure does not stop the version being published — the .pt/.onnx above
         # are real and worth keeping — but it is carried down to the finalize.
+        retained_compile_artifacts: dict[str, Path] = {}
         compile_error: str | None = None
         if args.skip_hef:
             client.log_step(run_id, 7, "compile", "info", "HEF compile skipped (--skip-hef)")
@@ -177,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                 config=config, client=client, run_id=run_id, semver=semver,
                 onnx_path=onnx_path, onnx_sha=u_onnx.content_hash,
                 dataset_yaml=dataset_yaml, save_dir=save_dir, git_sha=git_sha,
-                uploads=uploads,
+                uploads=uploads, retained_artifacts=retained_compile_artifacts,
             )
 
         # 7. Build manifest + create version
@@ -207,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         bundle_dir = save_dir / "release"
         assemble_bundle(
             bundle_dir=bundle_dir,
-            artifacts={"pytorch": best_pt, "onnx": onnx_path},
+            artifacts={"pytorch": best_pt, "onnx": onnx_path, **retained_compile_artifacts},
             eval_fp32=fp32_eval or None,
             eval_int8=int8_eval,
             manifest=manifest,
@@ -224,6 +225,14 @@ def main(argv: list[str] | None = None) -> int:
             "metrics_summary": manifest.metrics_summary,
             "git_sha": git_sha,
         }
+        if "compile_diagnostics" in retained_compile_artifacts:
+            from sack_train_ml.compile_diagnostics import digest
+            diagnostic_path = retained_compile_artifacts["compile_diagnostics"]
+            metadata["compile_diagnostics"] = {
+                "attempt_id": diagnostic_path.parent.name,
+                "local_path": str(diagnostic_path), **digest(diagnostic_path),
+                "key": uploads["compile_diagnostics"].key if "compile_diagnostics" in uploads else None,
+            }
         version_row = client.create_version(
             run_id=run_id,
             model_line_id=model_line_id,
@@ -432,6 +441,7 @@ def _maybe_compile_hef(
     save_dir: Path,
     git_sha: str | None,
     uploads: dict[str, ArtifactRecord],
+    retained_artifacts: dict[str, Path] | None = None,
 ) -> str | None:
     """Optional in-flow HEF compile (step 6b). No-op unless ``compile_hef`` set.
 
@@ -445,68 +455,107 @@ def _maybe_compile_hef(
     if not copts.get("compile_hef"):
         return None
 
+    from sack_train_ml import compile_diagnostics as diagnostics
+    from sack_train_ml.hailo_pipeline import (
+        build_calib_dir, compile_onnx_to_hef, ensure_dfc_venv,
+    )
+
+    # Initial evidence precedes preflight/bootstrap as well as the SDK child.
+    # Already-held client secrets are used solely for redaction, never persisted.
+    secrets = tuple(s for s in (getattr(client, "key", ""), getattr(client, "callback_secret", "")) if s)
+    errors: list[str] = []
+    archive = None
+    art = None
+    attempt = None
     try:
-        from sack_train_ml.hailo_pipeline import (
-            build_calib_dir,
-            compile_onnx_to_hef,
-            ensure_dfc_venv,
-        )
-
+        attempt = diagnostics.begin(save_dir / "hef", run_id=run_id, semver=semver,
+                                    onnx=onnx_path, requested={"caller_options": copts,
+                                        "model": "yolov11s_sack",
+                                        "target": (config.export_options or {}).get("hailo_target", "hailo8l"),
+                                        "input_size": _imgsz(config), "classes": len(config.classes),
+                                        "git_sha": git_sha},
+                                    known_secrets=secrets)
         client.log_step(run_id, 7, "compile", "started", "HEF compile (DFC ClientRunner) starting")
-
         kwargs = compile_kwargs(copts)
-
-        # The wheel is pinned by the toolchain, not chosen per run — see
-        # contract.dfc_wheel_key().
+        # Refuse a supplied source identity mismatch before bootstrap too.
+        diagnostics.attach(attempt.directory).verify_source(onnx_path, onnx_sha)
+        diagnostics.attach(attempt.directory).inputs(requested=kwargs)
         wheel_key = contract.dfc_wheel_key()
         wheel_local = REPO_ROOT / "tools" / Path(wheel_key).name
         if not wheel_local.exists():
             _download_url(client.download_tool(wheel_key), wheel_local)
             client.log_step(run_id, 7, "compile", "info", f"DFC wheel pulled · {wheel_local.name}")
         venv_py = ensure_dfc_venv(wheel_local)
-
-        # Calibration images come from the run's own dataset (val split, train
-        # fallback) — the only images a Colab session is guaranteed to hold. That is
-        # proof-grade rather than production-grade quantization; `calibration_set` is
-        # refused in the schema for exactly this reason.
-        calib_dir = build_calib_dir(
-            dataset_yaml, REPO_ROOT / "data" / "calib" / run_id, n=kwargs["calib_n"],
-        )
-
+        calib_dir = build_calib_dir(dataset_yaml, REPO_ROOT / "data" / "calib" / run_id,
+                                    n=kwargs["calib_n"])
         art = compile_onnx_to_hef(
-            onnx_path=onnx_path,
-            calib_dir=calib_dir,
-            out_dir=save_dir / "hef",
-            model_name="yolov11s_sack",
-            venv_python=venv_py,
+            onnx_path=onnx_path, calib_dir=calib_dir, out_dir=save_dir / "hef",
+            model_name="yolov11s_sack", venv_python=venv_py,
             target=(config.export_options or {}).get("hailo_target", "hailo8l"),
-            input_size=_imgsz(config),
-            classes=len(config.classes),
-            source_onnx_sha=onnx_sha,
-            git_sha=git_sha,
+            input_size=_imgsz(config), classes=len(config.classes),
+            source_onnx_sha=onnx_sha, git_sha=git_sha, run_id=run_id, semver=semver,
             extra_meta={"run_id": run_id, "semver": semver, "class_names": config.classes},
-            **kwargs,
+            attempt=attempt, **kwargs,
         )
+        archive = art.diagnostics
+    except diagnostics.CompileFailure as exc:
+        archive = exc.archive
+        errors.append(str(exc))
+    except diagnostics.RetentionError as exc:
+        # Finalization already failed; do not retry it or invent a ready archive.
+        errors.append(str(exc))
+    except Exception as exc:
+        detail = diagnostics.sanitize(f"{type(exc).__name__}: {exc}", secrets)
+        errors.append(detail)
+        if attempt is not None:
+            try:
+                archive = diagnostics.finalize(attempt, returncode=None, stdout="",
+                                               stderr=detail + "\n", error=detail)
+            except diagnostics.RetentionError as retention:
+                errors.append(str(retention))
 
-        u_hef = client.upload_artifact(art.hef_path, kind="hef", run_id=run_id, semver=semver,
-                                       quantization=art.quantization)
-        uploads["hef"] = u_hef.to_record()
-        u_meta = client.upload_artifact(art.hef_meta_path, kind="hef_meta", run_id=run_id, semver=semver)
-        uploads["hef_meta"] = u_meta.to_record()
-        client.log_step(run_id, 7, "compile", "ok",
-                        f"HEF compiled + uploaded · {art.hef_path.name} "
-                        f"(optimization_level={kwargs['opt_level']})")
-        return None
-    except Exception as exc:  # noqa: BLE001
-        import traceback
-        traceback.print_exc()
-        detail = f"{type(exc).__name__}: {exc}"
+    if archive is not None:
+        print(f"[compile] local diagnostics: {archive.path}")
+        if retained_artifacts is not None:
+            retained_artifacts["compile_diagnostics"] = archive.path
+        # Unique upload stem; the version's original semver remains unchanged.
+        outcome = {"status": "failed"}
         try:
-            client.log_step(run_id, 7, "compile", "error",
-                            f"HEF compile failed: {detail} — .pt/.onnx still published")
-        except Exception:
-            pass
-        return detail
+            uploaded = client.upload_artifact(
+                archive.path, kind="compile_diagnostics", run_id=run_id,
+                semver=f"{semver}-compile-{archive.attempt_id}", content_type="application/zip",
+            )
+            uploads["compile_diagnostics"] = uploaded.to_record()
+            outcome = {"status": "uploaded", "key": uploaded.r2_key}
+            client.log_step(run_id, 7, "compile", "info",
+                            f"Diagnostics retained: {archive.path}; R2 key: {uploaded.r2_key}")
+        except Exception as exc:
+            detail = diagnostics.sanitize(f"diagnostic upload failed: {exc}", secrets)
+            errors.append(detail)
+            outcome["error"] = detail
+        try:
+            diagnostics.record_persistence(archive, outcome)
+        except Exception as exc:
+            errors.append(diagnostics.sanitize(f"diagnostic persistence receipt failed: {exc}; local archive: {archive.path}", secrets))
+
+    # Diagnostic persistence is independent of the HEF/meta uploads. A failure in
+    # either path fails the requested flow, while retaining every successful upload.
+    if art is not None:
+        try:
+            u_hef = client.upload_artifact(art.hef_path, kind="hef", run_id=run_id, semver=semver,
+                                           quantization=art.quantization)
+            uploads["hef"] = u_hef.to_record()
+            u_meta = client.upload_artifact(art.hef_meta_path, kind="hef_meta", run_id=run_id, semver=semver)
+            uploads["hef_meta"] = u_meta.to_record()
+        except Exception as exc:
+            errors.append(diagnostics.sanitize(f"HEF/meta upload failed: {exc}", secrets))
+    detail = "; ".join(errors)
+    try:
+        client.log_step(run_id, 7, "compile", "error" if errors else "ok",
+                        detail or "HEF and compile diagnostics retained + uploaded")
+    except Exception as exc:
+        detail = "; ".join(filter(None, [detail, diagnostics.sanitize(f"compile log failed: {exc}", secrets)]))
+    return detail or None
 
 
 def _materialize_dataset(

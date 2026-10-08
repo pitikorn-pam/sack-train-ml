@@ -26,6 +26,11 @@
       "contentType": "application/x-yaml",
       "bundleName": "model.hef.meta.yaml"
     },
+    "compile_diagnostics": {
+      "extension": "compile-diagnostics.zip",
+      "contentType": "application/zip",
+      "bundleName": "compile-diagnostics.zip"
+    },
     "effective_config": {
       "extension": "effective-config.json",
       "contentType": "application/json",

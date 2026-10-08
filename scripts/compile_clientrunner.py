@@ -24,9 +24,18 @@ learning ``2026-06-23_onnx-to-hef-clientrunner-gotchas``):
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
+import sys
+from importlib import metadata
+from io import BytesIO
+from pathlib import Path
+
+# The dedicated DFC venv need not install the training package/dependencies.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from sack_train_ml.compile_diagnostics import attach
 
 import numpy as np
 from PIL import Image
@@ -42,13 +51,27 @@ def letterbox(im, size, color=(114, 114, 114)):
     return cv
 
 
-def load_calib(d, n, size):
+def load_calib(d, n, size, journal=None):
     fs = sorted(glob.glob(d + "/*.jpg") + glob.glob(d + "/*.jpeg") + glob.glob(d + "/*.png"))[:n]
     if not fs:
         raise SystemExit("no calib images in " + d)
     a = np.zeros((len(fs), size, size, 3), np.float32)
+    selected = []
     for i, f in enumerate(fs):
-        a[i] = np.asarray(letterbox(Image.open(f).convert("RGB"), size), np.float32)
+        data = Path(f).read_bytes()
+        a[i] = np.asarray(letterbox(Image.open(BytesIO(data)).convert("RGB"), size), np.float32)
+        selected.append({"name": Path(f).name, "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data)})
+    if journal is not None:
+        journal.calibration(selected, requested_count=n, preprocessing={
+            "selection": "sorted flat *.jpg + *.jpeg + *.png paths[:n]",
+            "color": "RGB", "resize": "PIL.Image.BILINEAR",
+            "letterbox": {"size": size, "pad_rgb": [114, 114, 114],
+                          "scale": "min(size/w,size/h)", "rounding": "Python round",
+                          "placement": "center using integer floor division"},
+            "dtype": "float32", "layout": "NHWC", "range": [0, 255],
+            "normalization": "model script divides by 255; no division in calibration loader",
+            "tensor_shape": list(a.shape), "observed_min": float(a.min()), "observed_max": float(a.max()),
+        })
     print(f"calib {len(fs)} imgs shape={a.shape} range=[{a.min():.0f},{a.max():.0f}]")
     return a
 
@@ -188,11 +211,31 @@ def main():
     # nms: auto = on-chip yolov8 NMS for yolov11-detection only, raw otherwise.
     # yolo26 (4-ch direct box) and segmentation must NOT use the yolov8 on-chip NMS.
     ap.add_argument("--nms", choices=["auto", "onchip", "raw"], default="auto")
+    ap.add_argument("--attempt-dir", required=True)
     a = ap.parse_args()
+    journal = attach(Path(a.attempt_dir))
+    journal.verify_source(Path(a.onnx))
+    if Path(a.work).resolve() != journal.directory.resolve() or Path(a.out).resolve().parent != journal.directory.resolve():
+        raise ValueError("work and HEF output must belong to the isolated attempt")
     os.makedirs(a.work, exist_ok=True)
     os.environ.setdefault("USER", "hailo")  # Colab runs as root w/o $USER -> compile KeyError
 
+    explicit_end = [n.strip() for n in a.end_nodes.split(",") if n.strip()]
+    journal.inputs(requested={"parse_options": {
+        "start_node": a.start_node, "end_nodes": explicit_end, "nms": a.nms,
+    }})
+    import hailo_sdk_client
     from hailo_sdk_client import ClientRunner
+    sdk_version = getattr(hailo_sdk_client, "__version__", None)
+    if sdk_version in (None, "", "?", "unknown"):
+        sdk_version = None
+    try:
+        compiler_version = metadata.version("hailo_dataflow_compiler")
+    except metadata.PackageNotFoundError:
+        compiler_version = None
+    journal.inputs(sdk_version=sdk_version, sdk_version_source="hailo_sdk_client.__version__",
+                   compiler_version=compiler_version,
+                   compiler_version_source="importlib.metadata.version(hailo_dataflow_compiler)")
 
     start = a.start_node
 
@@ -200,13 +243,24 @@ def main():
     # the NMS mode. Explicit --end-nodes / --nms override the derived values; when
     # end-nodes are given, skip the derived-name existence check (it's the override
     # for exactly the rename case that check would reject).
-    explicit_end = [n.strip() for n in a.end_nodes.split(",") if n.strip()]
     family, task, nms_auto, derived_end = detect_head(
         a.onnx, verify_end_nodes=not explicit_end
     )
     end = explicit_end or derived_end
     nms_mode = nms_auto if a.nms == "auto" else a.nms
     print(f"DETECT {json.dumps({'family': family, 'task': task, 'nms': nms_mode, 'end_nodes': end})}")
+
+    observed = {"family": family, "task": task, "source": "detect_head ONNX graph"}
+    if not explicit_end:
+        observed["end_nodes"] = derived_end  # detect_head validated these graph nodes.
+    journal.inputs(detected=observed, supplied_options={
+        "start_node": {"value": start, "classification": "supplied", "observed": False,
+                       "source": "--start-node or CLI default"},
+        "end_nodes": {"value": end, "classification": "supplied" if explicit_end else "recipe_derived",
+                      "observed": False, "source": "--end-nodes override" if explicit_end else "detect_head node selection"},
+        "nms": {"value": nms_mode, "classification": "supplied" if a.nms != "auto" else "recipe_derived",
+                "observed": False, "source": "--nms override" if a.nms != "auto" else "recipe selected from graph family/task"},
+    })
 
     # ---- 1) PARSE: onnx -> HAR ----
     runner = ClientRunner(hw_arch=a.hw)
@@ -215,8 +269,9 @@ def main():
         start_node_names=[start], end_node_names=end,
         net_input_shapes={start: [1, 3, a.size, a.size]},
     )
-    parsed = f"{a.work}/{a.net}_parsed.har"
+    parsed = f"{a.work}/native.har"
     runner.save_har(parsed)
+    journal.saved("native", Path(parsed))
     print("PARSED ->", parsed)
 
     # ---- 2) model script: normalization (edge feeds raw uint8) [+ on-chip NMS] ----
@@ -239,23 +294,29 @@ def main():
             "background_removal": False, "bbox_decoders": bbox_decoders,
         }
         nms_json = f"{a.work}/nms_config.json"
-        json.dump(nms, open(nms_json, "w"), indent=2)
+        with open(nms_json, "w") as f:
+            json.dump(nms, f, indent=2)
         alls += f'nms_postprocess("{nms_json}", meta_arch=yolov8, engine=cpu)\n'
     else:
         print(f"nms=raw ({family}/{task}) — skipping on-chip nms_postprocess")
     print("--- alls ---\n" + alls)
+    journal.script(alls)
     runner.load_model_script(alls)
+    journal.script(alls, applied=True)
 
     # ---- 3) QUANTIZE + CALIBRATE: -> quantized HAR ----
-    calib = load_calib(a.calib, a.calib_n, a.size)
+    calib = load_calib(a.calib, a.calib_n, a.size, journal=journal)
     runner.optimize(calib)
-    quant = f"{a.work}/{a.net}_quantized.har"
+    quant = f"{a.work}/quantized.har"
     runner.save_har(quant)
+    journal.saved("quantized", Path(quant))
     print("QUANTIZED ->", quant)
 
     # ---- 4) COMPILE -> HEF ----
     hef = runner.compile()
-    open(a.out, "wb").write(hef)
+    with open(a.out, "wb") as f:
+        f.write(hef)
+    journal.saved("hef", Path(a.out))
     print("HEF ->", a.out, os.path.getsize(a.out), "bytes")
 
 

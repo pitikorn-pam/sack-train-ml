@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 # Must match contracts/param-schema.json::artifactKinds — tests/test_artifact_kinds.py
 # holds it there. `effective_config` was missing while train_for_run.py uploaded it.
-ArtifactKind = Literal["pytorch", "onnx", "hef", "hef_meta", "effective_config"]
+ArtifactKind = Literal["pytorch", "onnx", "hef", "hef_meta", "effective_config", "compile_diagnostics"]
 
 
 # ----------------------------------------------------------------------------

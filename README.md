@@ -192,3 +192,7 @@ Plus a `versions` row in Supabase that the edge device polls via `resolve-channe
 ## License
 
 Internal — iPassion Co., Ltd.
+
+## Compile diagnostics retention
+
+Native/quantized HAR stages, measured calibration identities and compiler logs are retained in isolated attempts on success and partial failure. See [HAR retention and retrieval](docs/compile-diagnostics.md). Real SDK reload, Colab Drive and live R2 persistence remain UNVERIFIED by offline tests.

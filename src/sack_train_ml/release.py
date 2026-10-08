@@ -66,6 +66,7 @@ def build_manifest(
     input_size: list[int],
     task: str,
     output_kind: str,
+    dataset_source: dict[str, Any] | None = None,
 ) -> ReleaseManifest:
     return ReleaseManifest(
         version=version,
@@ -78,4 +79,5 @@ def build_manifest(
         input_size=input_size,
         task=task,
         output_kind=output_kind,
+        dataset_source=dataset_source,
     )

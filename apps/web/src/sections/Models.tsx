@@ -314,7 +314,7 @@ function VersionDetailPanel({
   const fp32 = (version.metadata?.metrics_summary?.fp32 ?? {}) as Record<string, number>;
   const int8 = (version.metadata?.metrics_summary?.int8 ?? {}) as Record<string, number>;
   const gate = version.metadata?.metrics_summary?.gate as Record<string, any> | undefined;
-  const artifactKinds = ["pytorch", "onnx", "hef", "hef_meta", "effective_config"] as const;
+  const artifactKinds = ["pytorch", "onnx", "hef", "hef_meta", "effective_config", "compile_diagnostics"] as const;
 
   return (
     <div className="version-detail-inner">

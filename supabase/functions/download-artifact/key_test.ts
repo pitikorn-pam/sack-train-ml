@@ -13,7 +13,7 @@ import { assert } from "jsr:@std/assert@1.0.14";
 import { ARTIFACT_EXTENSIONS } from "../_shared/artifacts.ts";
 
 const KEY_RE =
-  /^runs\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+\.(pt|onnx|hef|hef\.meta\.yaml|effective-config\.json)$/;
+  /^runs\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+\.(pt|onnx|hef|hef\.meta\.yaml|effective-config\.json|compile-diagnostics\.zip)$/;
 
 Deno.test("every registered artifact extension is downloadable", () => {
   for (const [kind, ext] of Object.entries(ARTIFACT_EXTENSIONS)) {
